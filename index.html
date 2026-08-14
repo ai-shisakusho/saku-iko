@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Prototype 004 - Overpass駅別カバレッジテスト v3</title>
+  <title>Prototype 004 - Overpass駅別カバレッジテスト v4</title>
   <style>
     :root { font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5; }
     * { box-sizing:border-box; }
@@ -44,9 +44,9 @@
     }
 
     .table-wrap { overflow-x:auto; margin-top:10px; }
-    table { width:100%; border-collapse:collapse; min-width:780px; }
+    table { width:100%; border-collapse:collapse; min-width:820px; }
     th,td { padding:10px 9px; border-bottom:1px solid #e2e2e2; text-align:left; vertical-align:top; }
-    th { background:#f7f7f7; font-size:.84rem; position:sticky; top:0; }
+    th { background:#f7f7f7; font-size:.84rem; }
     td { font-size:.9rem; }
     .badge {
       display:inline-block;
@@ -66,8 +66,8 @@
 </head>
 <body>
 <main>
-  <h1>Overpass駅別カバレッジテスト v3</h1>
-  <p class="muted">Prototype 004「サクいこ」用。主要駅ごとに1ジャンルずつ取得し、結果を表に残します。履歴は保存しません。</p>
+  <h1>Overpass駅別カバレッジテスト v4</h1>
+  <p class="muted">Prototype 004「サクいこ」用。500mを基本に、必要なら1km・2kmへ広げて確認します。保存はしません。</p>
 
   <section class="card">
     <h2>主要駅プリセット</h2>
@@ -79,7 +79,7 @@
       <button type="button" data-station="上野">上野</button>
       <button type="button" data-station="品川">品川</button>
     </div>
-    <p class="muted">駅を押すと、下の緯度・経度に反映します。</p>
+    <p class="muted">まず東京・新宿・渋谷で「500m × 3ジャンル」を試す想定です。</p>
   </section>
 
   <section class="card">
@@ -108,13 +108,14 @@
       <div>
         <label for="radius">半径</label>
         <select id="radius">
+          <option value="500" selected>500m</option>
           <option value="1000">1km</option>
           <option value="2000">2km</option>
         </select>
       </div>
       <div>
         <label>判定基準</label>
-        <input value="◎=1kmで3件以上 / ○=2kmで3件以上 / △=0〜2件" readonly>
+        <input value="◎=500mで5件以上 / ○=1km以上で5件以上 / △=0〜4件" readonly>
       </div>
     </div>
 
@@ -128,7 +129,7 @@
 
   <section class="card">
     <h2>検証結果</h2>
-    <p class="muted">同じ駅でも「カフェ → 居酒屋 → ごはん」と1件ずつ試してください。リロードすると表は消えます。</p>
+    <p class="muted">500mで5件以上取れれば本番候補。足りない場合だけ1km→2kmで再テストします。</p>
     <div class="table-wrap">
       <table>
         <thead>
@@ -201,7 +202,6 @@ const els = {
   clearBtn: $("clearBtn"),
   status: $("status"),
   resultBody: $("resultBody"),
-  emptyRow: $("emptyRow"),
   attemptLog: $("attemptLog"),
   queryView: $("queryView")
 };
@@ -222,13 +222,13 @@ function valid(lat, lon) {
          lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
 }
 function buildQuery(lat, lon, radius, genre) {
-  return `[out:json][timeout:10];
+  return `[out:json][timeout:6];
 nwr${GENRES[genre].filter}(around:${radius},${lat},${lon});
 out center tags qt;`;
 }
 function judge(count, radius) {
-  if (radius === 1000 && count >= 3) return "◎";
-  if (radius === 2000 && count >= 3) return "○";
+  if (radius === 500 && count >= 5) return "◎";
+  if (radius > 500 && count >= 5) return "○";
   return "△";
 }
 function judgeClass(j) {
@@ -247,7 +247,7 @@ async function fetchWithFallback(query) {
 
   for (const server of SERVERS) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000);
+    const timer = setTimeout(() => controller.abort(), 6500);
     const start = performance.now();
 
     try {
@@ -271,7 +271,7 @@ async function fetchWithFallback(query) {
       return { ok:true, data, server:server.name, sec, attempts };
     } catch (e) {
       const sec = (performance.now() - start) / 1000;
-      const msg = e.name === "AbortError" ? "12秒タイムアウト" : (e.message || String(e));
+      const msg = e.name === "AbortError" ? "約6秒タイムアウト" : (e.message || String(e));
       attempts.push(`${server.name}: ${msg} (${sec.toFixed(2)}秒)`);
     } finally {
       clearTimeout(timer);
@@ -292,7 +292,7 @@ function appendRow({ station, genre, radius, count, j, sec, server, result }) {
     rowNo,
     station,
     GENRES[genre].label,
-    radius === 1000 ? "1km" : "2km",
+    radius === 500 ? "500m" : radius === 1000 ? "1km" : "2km",
     count ?? "-",
     j ?? "-",
     sec != null ? `${sec.toFixed(2)}秒` : "-",
@@ -323,7 +323,8 @@ document.querySelectorAll("[data-station]").forEach(button => {
     els.stationName.value = name;
     els.lat.value = s.lat.toFixed(6);
     els.lon.value = s.lon.toFixed(6);
-    setStatus(`${name}駅をセットしました。`);
+    els.radius.value = "500";
+    setStatus(`${name}駅をセットしました。500mから試してください。`);
   });
 });
 
@@ -341,7 +342,8 @@ els.locateBtn.addEventListener("click", () => {
       els.stationName.value = "現在地";
       els.lat.value = p.coords.latitude.toFixed(6);
       els.lon.value = p.coords.longitude.toFixed(6);
-      setStatus("現在地を取得しました。保存はしません。", "ok");
+      els.radius.value = "500";
+      setStatus("現在地を取得しました。500mから試してください。保存はしません。", "ok");
       setBusy(false);
     },
     () => {
@@ -378,7 +380,7 @@ els.searchBtn.addEventListener("click", async () => {
         count:null, j:null, sec:null, server:null,
         result:"取得失敗"
       });
-      setStatus("すべてのOverpassサーバーで取得に失敗しました。", "error");
+      setStatus("両方のOverpassサーバーで取得に失敗しました。", "error");
       return;
     }
 
@@ -391,7 +393,16 @@ els.searchBtn.addEventListener("click", async () => {
       result:"成功"
     });
 
-    setStatus(`${station} / ${GENRES[genre].label}：${count}件取得しました。`, "ok");
+    const next =
+      count >= 5
+        ? "この半径で候補数は十分です。"
+        : radius === 500
+          ? "候補が少ないため、次は1kmを試してください。"
+          : radius === 1000
+            ? "候補が少ないため、次は2kmを試してください。"
+            : "2kmでも候補が少ないです。";
+
+    setStatus(`${station} / ${GENRES[genre].label}：${count}件。${next}`, count >= 5 ? "ok" : "");
   } finally {
     setBusy(false);
   }
