@@ -304,10 +304,9 @@
 const WORKER_BASE = "https://sakuiko-proxy.ai-shisakusho.workers.dev/places";
 const RADIUS_STEPS = [1000, 2000]; // 初期1km、足りなければ2km
 const MIN_CANDIDATES = 3; // これ未満なら次の半径を試す
-const TOP_N = 5; // 空いてそう度×距離で絞る上位件数
 const OTHERS_COUNT = 4; // 「ほかの候補」に表示する件数
 
-// 上位候補からの重み付きランダム選出比率(1位から順に)
+// 上位候補からの重み付きランダム選出比率(1位から順に。6位以降は最後の値を使い回す)
 const PICK_WEIGHTS = [0.35, 0.25, 0.20, 0.12, 0.08];
 
 // おまかせで実際に検索するジャンル(barは対象外)
@@ -320,10 +319,14 @@ const GENRE_LABELS = {
   all: "🎲 おまかせ"
 };
 
-// 直近の検索状態(「別の候補」で再利用する)
+// 直近の検索状態(「別の候補」「これは違う」で再利用する)
 let sessionState = {
-  candidates: [],   // ランク済み上位TOP_N件
-  shownNames: new Set() // このセッションで一度出した店名
+  candidates: [],        // ランク済み候補(最大20件)
+  shownNames: new Set(), // このセッションで一度出した店名(重み付き選出のバランス用)
+  excludedNames: new Set(), // 「これは違う」で明示的に除外した店名(再取得時に復活させない)
+  coords: null,
+  genre: null,
+  triedRadii: new Set()  // 既に取得を試みた半径(重複取得を避ける)
 };
 
 // ==== 画面切り替え ====
@@ -376,9 +379,11 @@ async function startFlow() {
     : currentGenre;
 
   let features = [];
+  let usedRadius = RADIUS_STEPS[0];
   try {
     for (const radius of RADIUS_STEPS) {
       features = await fetchPlaces(searchGenre, coords.lat, coords.lon, radius);
+      usedRadius = radius;
       if (features.length >= MIN_CANDIDATES) break;
     }
   } catch (e) {
@@ -394,6 +399,10 @@ async function startFlow() {
   const ranked = rankPlaces(features, coords, searchGenre);
   sessionState.candidates = ranked;
   sessionState.shownNames = new Set();
+  sessionState.excludedNames = new Set();
+  sessionState.coords = coords;
+  sessionState.genre = searchGenre;
+  sessionState.triedRadii = new Set([usedRadius]);
 
   const picked = weightedPick(ranked, sessionState.shownNames);
   renderResult(picked, ranked);
@@ -415,11 +424,44 @@ function weightedPick(ranked, excludeNames) {
   return candidates[candidates.length - 1];
 }
 
+// ==== 候補が少なくなってきたら、裏で検索範囲を広げて追加取得する ====
+const REFILL_THRESHOLD = 6; // これ未満になったら補充を試みる
+async function topUpCandidatesIfLow() {
+  if (sessionState.candidates.length >= REFILL_THRESHOLD) return;
+  if (!sessionState.coords || !sessionState.genre) return;
+
+  // まだ試していない、より広い半径を探す
+  const nextRadius = RADIUS_STEPS.find(r => !sessionState.triedRadii.has(r));
+  if (!nextRadius) return; // 全ての半径を試し済み(2kmまで広げても駄目だったら諦める)
+
+  sessionState.triedRadii.add(nextRadius);
+
+  try {
+    const features = await fetchPlaces(sessionState.genre, sessionState.coords.lat, sessionState.coords.lon, nextRadius);
+    const ranked = rankPlaces(features, sessionState.coords, sessionState.genre);
+
+    const existingNames = new Set(sessionState.candidates.map(item => item.name));
+    const fresh = ranked.filter(item =>
+      !existingNames.has(item.name) && !sessionState.excludedNames.has(item.name)
+    );
+
+    sessionState.candidates = [...sessionState.candidates, ...fresh].sort((a, b) => {
+      if (b.crowdLevel !== a.crowdLevel) return b.crowdLevel - a.crowdLevel;
+      return a.dist - b.dist;
+    });
+  } catch (e) {
+    // 補充に失敗しても致命的ではないので、そのまま今ある候補で続行する
+  }
+}
+
 // ==== 「これは違う」: このセッション内でのみ、指定した店を候補から完全に除外する ====
-// 画面を閉じる/リロードすれば忘れる(保存はしない)。再取得もしない。
-function excludeCandidate(name) {
+// 画面を閉じる/リロードすれば忘れる(保存はしない)。再取得もしない(候補が少ない時のみ裏で補充する)。
+async function excludeCandidate(name) {
   sessionState.candidates = sessionState.candidates.filter(item => item.name !== name);
   sessionState.shownNames.delete(name);
+  sessionState.excludedNames.add(name);
+
+  await topUpCandidatesIfLow();
 
   if (!sessionState.candidates.length) {
     showError("候補がなくなりました。ジャンルを変えて探し直してください。");
@@ -540,27 +582,30 @@ function guessGenreFromTag(categories) {
   return "food";
 }
 
-// ==== スコアリングして並び替え ====
+// ==== 並び替え(合成スコアは使わない) ====
+// 空いてそう度は「曜日・時間帯からの粗い3段階予測」でしかないため、
+// 距離という正確な数値と1つの点数に合成すると、実際にはない精密さを装ってしまう。
+// そこで「まず空いてそう度で並べ、同じ段階の中では距離が近い順」という
+// 階層的な並び替えにする。
 function rankPlaces(features, userCoords, genre) {
   const items = features.map(f => {
     const p = f.properties || {};
     const lat = p.lat, lon = p.lon;
     const dist = distanceMeters(userCoords.lat, userCoords.lon, lat, lon);
     const crowd = predictCrowd(genre, p.categories);
-    // スコア: 空いてそう度を優先しつつ、距離が近いほど加点
-    const distancePenalty = Math.min(dist / 500, 3); // 500mごとに1点減点、最大3点
-    const score = crowd.level * 2 - distancePenalty;
     return {
       name: p.name || "名称不明の店舗",
       lat, lon, dist,
-      crowdLevel: crowd.level,
-      reason: crowd.reason,
-      score
+      crowdLevel: crowd.level, // 3=空いてそう 2=普通そう 1=混んでそう
+      reason: crowd.reason
     };
   }).filter(it => it.name && Number.isFinite(it.lat) && Number.isFinite(it.lon));
 
-  items.sort((a, b) => b.score - a.score);
-  return items.slice(0, TOP_N);
+  items.sort((a, b) => {
+    if (b.crowdLevel !== a.crowdLevel) return b.crowdLevel - a.crowdLevel; // 空いてそう度優先
+    return a.dist - b.dist; // 同じ段階内では近い順
+  });
+  return items; // ここでは絞らない。最大20件すべてを候補プールとして保持する
 }
 
 // ==== 結果描画 ====
