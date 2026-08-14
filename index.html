@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prototype 004 - Overpass軽量テスト v2</title>
+  <style>
+    :root { font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f6f7f8; color:#181818; }
+    main { width:min(760px,calc(100% - 28px)); margin:auto; padding:24px 0 48px; }
+    h1 { font-size:clamp(1.35rem,5vw,1.9rem); margin:0 0 6px; }
+    h2 { font-size:1.05rem; margin:0 0 12px; }
+    p { margin:6px 0; }
+    .muted { color:#666; font-size:.9rem; }
+    .card { background:#fff; border:1px solid #ddd; border-radius:16px; padding:16px; margin-top:14px; }
+    .warning { border-left:4px solid #b26a00; padding:10px 12px; background:#fff7e8; border-radius:8px; margin-top:12px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    @media (max-width:560px){ .grid{grid-template-columns:1fr;} }
+    label { display:block; font-size:.86rem; font-weight:700; margin-bottom:4px; }
+    input,select,button { width:100%; min-height:46px; border-radius:11px; font:inherit; }
+    input,select { border:1px solid #bbb; background:#fff; color:#181818; padding:9px 11px; }
+    button { border:0; background:#181818; color:#fff; padding:10px 14px; font-weight:800; cursor:pointer; }
+    button.secondary { background:#fff; color:#181818; border:1px solid #aaa; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+    @media (max-width:560px){ .actions{grid-template-columns:1fr;} }
+    .status { margin-top:12px; min-height:24px; font-weight:700; }
+    .error { color:#a00000; }
+    .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+    @media (max-width:660px){ .metrics{grid-template-columns:1fr 1fr;} }
+    .metric { border:1px solid #ddd; border-radius:12px; padding:11px; }
+    .metric small { display:block; color:#666; }
+    .metric strong { font-size:1.25rem; }
+    .meta { margin-top:12px; display:grid; gap:4px; font-size:.9rem; }
+    ul { padding-left:1.2rem; margin:8px 0 0; }
+    li { margin:4px 0; }
+    details { margin-top:14px; }
+    pre { overflow:auto; white-space:pre-wrap; word-break:break-word; background:#f4f4f4; padding:10px; border-radius:10px; font-size:.8rem; }
+    .badge { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:2px 8px; font-weight:800; }
+    footer { margin-top:22px; color:#666; font-size:.8rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Overpass軽量テスト v2</h1>
+  <p class="muted">Prototype 004の本番に近い「1ジャンル検索」を中心に確認します。保存処理はありません。</p>
+
+  <div id="fileWarning" class="warning" hidden>
+    <strong>ローカルファイルを直接開いています。</strong><br>
+    <span class="muted">file:// ではCORSや位置情報の挙動がGitHub Pagesと異なる場合があります。最終判定はHTTP(S)環境で行ってください。</span>
+  </div>
+
+  <section class="card">
+    <h2>検索条件</h2>
+    <div class="grid">
+      <div>
+        <label for="lat">緯度</label>
+        <input id="lat" type="number" step="any" value="35.8062">
+      </div>
+      <div>
+        <label for="lon">経度</label>
+        <input id="lon" type="number" step="any" value="139.7217">
+      </div>
+      <div>
+        <label for="radius">半径</label>
+        <select id="radius">
+          <option value="1000">1km</option>
+          <option value="2000">2km</option>
+        </select>
+      </div>
+      <div>
+        <label for="genre">ジャンル</label>
+        <select id="genre">
+          <option value="cafe">☕ カフェ</option>
+          <option value="drink">🍺 居酒屋・飲み</option>
+          <option value="food">🍜 ごはん</option>
+          <option value="all">🧪 全ジャンル（検証用）</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="locateBtn" class="secondary">📍 現在地を取得</button>
+      <button id="searchBtn">店舗を取得</button>
+    </div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <section id="result" class="card" hidden>
+    <h2>結果</h2>
+    <div class="metrics">
+      <div class="metric"><small>☕ カフェ</small><strong id="cafeCount">0</strong></div>
+      <div class="metric"><small>🍺 居酒屋</small><strong id="drinkCount">0</strong></div>
+      <div class="metric"><small>🍜 ごはん</small><strong id="foodCount">0</strong></div>
+      <div class="metric"><small>合計</small><strong id="totalCount">0</strong></div>
+    </div>
+
+    <div class="meta">
+      <div>判定: <span id="judge" class="badge">-</span></div>
+      <div>使用サーバー: <strong id="server">-</strong></div>
+      <div>応答時間: <strong id="elapsed">-</strong></div>
+      <div>OSMデータ時刻: <strong id="osmTime">-</strong></div>
+    </div>
+
+    <div id="storeList"></div>
+
+    <details>
+      <summary>サーバー試行ログ</summary>
+      <pre id="attemptLog"></pre>
+    </details>
+
+    <details>
+      <summary>実行クエリ</summary>
+      <pre id="queryView"></pre>
+    </details>
+  </section>
+
+  <footer>店舗データ © OpenStreetMap contributors / Overpass API。営業時間・口コミ・評価は取得しません。</footer>
+</main>
+
+<script>
+"use strict";
+
+const SERVERS = [
+  { name: "公式 overpass-api.de", url: "https://overpass-api.de/api/interpreter" },
+  { name: "Private.coffee", url: "https://overpass.private.coffee/api/interpreter" }
+];
+
+const $ = id => document.getElementById(id);
+const els = {
+  lat:$("lat"), lon:$("lon"), radius:$("radius"), genre:$("genre"),
+  locateBtn:$("locateBtn"), searchBtn:$("searchBtn"), status:$("status"),
+  result:$("result"), cafeCount:$("cafeCount"), drinkCount:$("drinkCount"),
+  foodCount:$("foodCount"), totalCount:$("totalCount"), judge:$("judge"),
+  server:$("server"), elapsed:$("elapsed"), osmTime:$("osmTime"),
+  storeList:$("storeList"), attemptLog:$("attemptLog"), queryView:$("queryView"),
+  fileWarning:$("fileWarning")
+};
+
+if (location.protocol === "file:") els.fileWarning.hidden = false;
+
+function busy(v) {
+  els.locateBtn.disabled = v;
+  els.searchBtn.disabled = v;
+}
+function status(text, error=false) {
+  els.status.textContent = text;
+  els.status.classList.toggle("error", error);
+}
+function valid(lat, lon) {
+  return Number.isFinite(lat) && Number.isFinite(lon) &&
+         lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
+function filterFor(genre) {
+  if (genre === "cafe")  return `["amenity"="cafe"]`;
+  if (genre === "drink") return `["amenity"~"^(pub|bar)$"]`;
+  if (genre === "food")  return `["amenity"~"^(restaurant|fast_food)$"]`;
+  return `["amenity"~"^(cafe|pub|bar|restaurant|fast_food)$"]`;
+}
+
+function buildQuery(lat, lon, radius, genre) {
+  // 1ジャンルなら1本だけ。本番想定の軽い問い合わせ。
+  return `[out:json][timeout:10];
+nwr${filterFor(genre)}(around:${radius},${lat},${lon});
+out center tags qt;`;
+}
+
+async function fetchWithFallback(query) {
+  const attempts = [];
+
+  for (const s of SERVERS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    const start = performance.now();
+
+    try {
+      status(`取得中… ${s.name}`);
+      const response = await fetch(s.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: "data=" + encodeURIComponent(query),
+        signal: controller.signal
+      });
+
+      const sec = (performance.now() - start) / 1000;
+      if (!response.ok) {
+        attempts.push(`${s.name}: HTTP ${response.status} (${sec.toFixed(2)}秒)`);
+        continue;
+      }
+
+      const data = await response.json();
+      attempts.push(`${s.name}: 成功 (${sec.toFixed(2)}秒)`);
+      return { data, server:s.name, sec, attempts };
+    } catch (e) {
+      const sec = (performance.now() - start) / 1000;
+      const msg = e.name === "AbortError" ? "ブラウザ側12秒タイムアウト" : (e.message || String(e));
+      attempts.push(`${s.name}: ${msg} (${sec.toFixed(2)}秒)`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const err = new Error("すべてのOverpassサーバーで取得に失敗しました。");
+  err.attempts = attempts;
+  throw err;
+}
+
+function category(el) {
+  const a = el.tags?.amenity;
+  if (a === "cafe") return "cafe";
+  if (a === "pub" || a === "bar") return "drink";
+  if (a === "restaurant" || a === "fast_food") return "food";
+  return null;
+}
+function nameOf(el) {
+  const t = el.tags || {};
+  return t["name:ja"] || t.name || t.brand || "名称未登録";
+}
+function coordsOf(el) {
+  if (Number.isFinite(el.lat) && Number.isFinite(el.lon)) return {lat:el.lat, lon:el.lon};
+  if (el.center && Number.isFinite(el.center.lat) && Number.isFinite(el.center.lon)) return el.center;
+  return null;
+}
+function distance(lat1,lon1,lat2,lon2) {
+  const R=6371000, rad=d=>d*Math.PI/180;
+  const p1=rad(lat1), p2=rad(lat2), dp=rad(lat2-lat1), dl=rad(lon2-lon1);
+  const a=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function coverage(total, radius) {
+  if (radius === 1000 && total >= 3) return "◎";
+  if (radius === 2000 && total >= 3) return "○";
+  return "△";
+}
+function render(data, server, sec, attempts, query, lat, lon, radius) {
+  const unique = [];
+  const seen = new Set();
+  for (const el of (data.elements || [])) {
+    const key = `${el.type}/${el.id}`;
+    if (!seen.has(key)) { seen.add(key); unique.push(el); }
+  }
+
+  const groups = { cafe:[], drink:[], food:[] };
+  for (const el of unique) {
+    const c = category(el);
+    if (c) groups[c].push(el);
+  }
+  const total = groups.cafe.length + groups.drink.length + groups.food.length;
+
+  els.cafeCount.textContent = groups.cafe.length;
+  els.drinkCount.textContent = groups.drink.length;
+  els.foodCount.textContent = groups.food.length;
+  els.totalCount.textContent = total;
+  els.judge.textContent = coverage(total, radius);
+  els.server.textContent = server;
+  els.elapsed.textContent = `${sec.toFixed(2)}秒`;
+  els.osmTime.textContent = data.osm3s?.timestamp_osm_base || "不明";
+  els.attemptLog.textContent = attempts.join("\n");
+  els.queryView.textContent = query;
+
+  const list = document.createElement("ul");
+  unique.map(el => {
+    const c = coordsOf(el);
+    return {el, d:c ? Math.round(distance(lat,lon,c.lat,c.lon)) : null};
+  }).sort((a,b)=>(a.d ?? Infinity)-(b.d ?? Infinity))
+    .slice(0,50)
+    .forEach(({el,d}) => {
+      const li=document.createElement("li");
+      const kind = category(el)==="cafe" ? "☕" : category(el)==="drink" ? "🍺" : "🍜";
+      li.textContent = `${kind} ${nameOf(el)}${d===null ? "" : `（約${d}m）`}`;
+      list.appendChild(li);
+    });
+
+  els.storeList.replaceChildren(list);
+  els.result.hidden = false;
+}
+
+els.locateBtn.addEventListener("click", () => {
+  if (!navigator.geolocation) return status("このブラウザでは位置情報を利用できません。", true);
+  busy(true); status("現在地を取得中…");
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      els.lat.value=p.coords.latitude.toFixed(6);
+      els.lon.value=p.coords.longitude.toFixed(6);
+      status("現在地を取得しました。保存はしません。");
+      busy(false);
+    },
+    e => {
+      status(e.code===1 ? "位置情報の利用が許可されていません。" : "現在地を取得できませんでした。", true);
+      busy(false);
+    },
+    { enableHighAccuracy:false, timeout:10000, maximumAge:60000 }
+  );
+});
+
+els.searchBtn.addEventListener("click", async () => {
+  const lat=Number(els.lat.value), lon=Number(els.lon.value);
+  const radius=Number(els.radius.value), genre=els.genre.value;
+  if (!valid(lat,lon)) return status("緯度・経度を確認してください。", true);
+
+  const query=buildQuery(lat,lon,radius,genre);
+  els.result.hidden=true;
+  busy(true);
+
+  try {
+    const r=await fetchWithFallback(query);
+    render(r.data,r.server,r.sec,r.attempts,query,lat,lon,radius);
+    status("取得できました。");
+  } catch(e) {
+    els.result.hidden=false;
+    els.cafeCount.textContent=els.drinkCount.textContent=els.foodCount.textContent=els.totalCount.textContent="-";
+    els.judge.textContent="-";
+    els.server.textContent="-";
+    els.elapsed.textContent="-";
+    els.osmTime.textContent="-";
+    els.storeList.replaceChildren();
+    els.queryView.textContent=query;
+    els.attemptLog.textContent=(e.attempts || []).join("\n");
+    status(`${e.message} 下の「サーバー試行ログ」を確認してください。`, true);
+  } finally {
+    busy(false);
+  }
+});
+</script>
+</body>
+</html>
