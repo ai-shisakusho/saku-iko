@@ -3,289 +3,150 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Prototype 004 - Overpass切り分けテスト v5</title>
+  <title>Prototype 004 - Overpass安定性最終試験 v6</title>
   <style>
     :root { font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5; }
     * { box-sizing:border-box; }
     body { margin:0; background:#f6f7f8; color:#181818; }
-    main { width:min(1040px,calc(100% - 28px)); margin:auto; padding:24px 0 48px; }
+    main { width:min(980px,calc(100% - 28px)); margin:auto; padding:24px 0 48px; }
     h1 { font-size:clamp(1.35rem,5vw,1.9rem); margin:0 0 6px; }
     h2 { font-size:1.05rem; margin:0 0 12px; }
     p { margin:6px 0; }
     .muted { color:#666; font-size:.9rem; }
     .card { background:#fff; border:1px solid #ddd; border-radius:16px; padding:16px; margin-top:14px; }
-    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-    @media (max-width:680px){ .grid{grid-template-columns:1fr;} }
-    label { display:block; font-size:.86rem; font-weight:700; margin-bottom:4px; }
-    input,select,button { width:100%; min-height:46px; border-radius:11px; font:inherit; }
-    input,select { border:1px solid #bbb; background:#fff; color:#181818; padding:9px 11px; }
-    button { border:0; background:#181818; color:#fff; padding:10px 14px; font-weight:800; cursor:pointer; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    @media (max-width:650px){ .grid{grid-template-columns:1fr 1fr;} }
+    .stat { text-align:center; }
+    .stat .num { font-size:1.6rem; font-weight:800; }
+    .stat .label { font-size:.8rem; color:#666; }
+    button { border:0; border-radius:11px; background:#181818; color:#fff; padding:12px 16px; font-weight:800; cursor:pointer; font-size:1rem; }
     button.secondary { background:#fff; color:#181818; border:1px solid #aaa; }
-    button.danger { background:#fff; color:#a00000; border:1px solid #caa; }
     button:disabled { opacity:.55; cursor:wait; }
-    .actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:12px; }
-    @media (max-width:680px){ .actions{grid-template-columns:1fr;} }
-    .station-buttons { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }
-    @media (max-width:680px){ .station-buttons{grid-template-columns:repeat(2,minmax(0,1fr));} }
-    .station-buttons button { background:#fff; color:#181818; border:1px solid #bbb; }
-    .status { margin-top:12px; min-height:24px; font-weight:800; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    .status { margin-top:12px; min-height:24px; font-weight:700; }
     .error { color:#a00000; }
     .ok { color:#0a6a2a; }
-    .compare {
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:12px;
-      margin-top:14px;
-    }
-    @media (max-width:760px){ .compare{grid-template-columns:1fr;} }
-    .panel { border:1px solid #ddd; border-radius:14px; padding:14px; }
-    .panel h3 { margin:0 0 8px; font-size:1rem; }
-    .metric { font-size:1.4rem; font-weight:900; }
-    .small { font-size:.86rem; color:#666; }
-    .table-wrap { overflow-x:auto; margin-top:10px; }
-    table { width:100%; border-collapse:collapse; min-width:940px; }
-    th,td { padding:10px 9px; border-bottom:1px solid #e2e2e2; text-align:left; vertical-align:top; }
-    th { background:#f7f7f7; font-size:.84rem; }
-    td { font-size:.9rem; }
-    .badge { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:2px 8px; font-weight:800; }
-    .good { color:#087830; }
-    .warn { color:#8a6500; }
-    .bad { color:#a00000; }
-    details { margin-top:14px; }
-    pre { overflow:auto; white-space:pre-wrap; word-break:break-word; background:#f4f4f4; padding:10px; border-radius:10px; font-size:.78rem; }
+    progress { width:100%; height:14px; border-radius:8px; margin-top:10px; }
+    .table-wrap { overflow-x:auto; margin-top:10px; max-height:420px; overflow-y:auto; }
+    table { width:100%; border-collapse:collapse; min-width:760px; }
+    th,td { padding:8px 9px; border-bottom:1px solid #e2e2e2; text-align:left; vertical-align:top; }
+    th { background:#f7f7f7; font-size:.82rem; position:sticky; top:0; }
+    td { font-size:.86rem; }
+    .badge { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:2px 8px; font-weight:800; white-space:nowrap; }
+    .ok-badge { color:#087830; }
+    .bad-badge { color:#a00000; }
+    .verdict { margin-top:14px; padding:14px; border-radius:12px; font-weight:800; font-size:1.05rem; }
+    .verdict.go { background:#e7f6ec; color:#0a6a2a; }
+    .verdict.stop { background:#fbeaea; color:#a00000; }
+    .verdict.pending { background:#f2f2f2; color:#555; }
     footer { margin-top:22px; color:#666; font-size:.8rem; }
   </style>
 </head>
 <body>
 <main>
-  <h1>Overpass切り分けテスト v5</h1>
-  <p class="muted">同じ地点・ジャンルで <strong>node+bbox</strong> と <strong>nwr+bbox</strong> を順番に実行し、応答時間と件数差を比較します。保存はしません。</p>
+  <h1>Overpass安定性最終試験 v6</h1>
+  <p class="muted">「サクいこ」用。node+bbox・500m固定。東京・新宿・渋谷 × カフェ/居酒屋/ごはん × 各3回 = 27回を逐次実行します。並列送信・即時リトライはしません。保存はしません。</p>
 
   <section class="card">
-    <h2>主要駅プリセット</h2>
-    <div class="station-buttons">
-      <button type="button" data-station="東京">東京</button>
-      <button type="button" data-station="新宿">新宿</button>
-      <button type="button" data-station="渋谷">渋谷</button>
-      <button type="button" data-station="池袋">池袋</button>
-      <button type="button" data-station="上野">上野</button>
-      <button type="button" data-station="品川">品川</button>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>検索条件</h2>
-    <div class="grid">
-      <div>
-        <label for="stationName">地点名</label>
-        <input id="stationName" value="新宿">
-      </div>
-      <div>
-        <label for="genre">ジャンル</label>
-        <select id="genre">
-          <option value="cafe">☕ カフェ</option>
-          <option value="drink">🍺 居酒屋・飲み</option>
-          <option value="food">🍜 ごはん</option>
-        </select>
-      </div>
-      <div>
-        <label for="lat">緯度</label>
-        <input id="lat" type="number" step="any" value="35.690921">
-      </div>
-      <div>
-        <label for="lon">経度</label>
-        <input id="lon" type="number" step="any" value="139.700258">
-      </div>
-      <div>
-        <label for="radius">半径</label>
-        <select id="radius">
-          <option value="500" selected>500m</option>
-          <option value="1000">1km</option>
-        </select>
-      </div>
-      <div>
-        <label>タイムアウト</label>
-        <input value="Overpass 20秒 / ブラウザ 22秒" readonly>
-      </div>
-    </div>
-
+    <h2>実行</h2>
+    <p class="muted">1リクエストごとに少し間隔を空けて順番に送ります（サーバー負荷への配慮）。完了まで数分かかります。</p>
     <div class="actions">
-      <button id="locateBtn" class="secondary" type="button">📍 現在地を取得</button>
-      <button id="compareBtn" type="button">node と nwr を比較</button>
-      <button id="clearBtn" class="danger" type="button">結果表をクリア</button>
+      <button id="runBtn" type="button">27回のテストを開始</button>
+      <button id="stopBtn" class="secondary" type="button" disabled>中止</button>
     </div>
+    <progress id="progressBar" max="27" value="0"></progress>
     <div id="status" class="status" role="status" aria-live="polite"></div>
   </section>
 
-  <section id="latestCard" class="card" hidden>
-    <h2>直近の比較</h2>
-    <div class="compare">
-      <div class="panel">
-        <h3>① node + bbox</h3>
-        <div id="nodeMetric" class="metric">-</div>
-        <div id="nodeDetail" class="small">-</div>
-      </div>
-      <div class="panel">
-        <h3>② nwr + bbox</h3>
-        <div id="nwrMetric" class="metric">-</div>
-        <div id="nwrDetail" class="small">-</div>
-      </div>
+  <section class="card">
+    <h2>集計結果</h2>
+    <div class="grid">
+      <div class="stat"><div class="num" id="statTotal">-</div><div class="label">実行数</div></div>
+      <div class="stat"><div class="num" id="statSuccessRate">-</div><div class="label">成功率</div></div>
+      <div class="stat"><div class="num" id="statAvg">-</div><div class="label">平均時間</div></div>
+      <div class="stat"><div class="num" id="statMedian">-</div><div class="label">中央値</div></div>
+      <div class="stat"><div class="num" id="statMax">-</div><div class="label">最大時間</div></div>
+      <div class="stat"><div class="num" id="statUnder3">-</div><div class="label">3秒以内の割合</div></div>
     </div>
-    <p id="conclusion" style="margin-top:14px;font-weight:800"></p>
+    <div id="verdict" class="verdict pending">27回完了後に判定を表示します。</div>
   </section>
 
   <section class="card">
-    <h2>比較結果</h2>
-    <p class="muted">まず東京・新宿で「カフェ」「居酒屋」を比較してください。ごはんは参考用です。</p>
+    <h2>実行ログ</h2>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr>
-            <th>#</th>
-            <th>地点</th>
-            <th>ジャンル</th>
-            <th>半径</th>
-            <th>node件数</th>
-            <th>node時間</th>
-            <th>nwr件数</th>
-            <th>nwr時間</th>
-            <th>件数差</th>
-            <th>判定</th>
-          </tr>
+          <tr><th>#</th><th>地点</th><th>ジャンル</th><th>試行</th><th>結果</th><th>時間</th><th>件数</th><th>サーバー</th></tr>
         </thead>
         <tbody id="resultBody">
-          <tr id="emptyRow"><td colspan="10" class="muted">まだ結果はありません。</td></tr>
+          <tr id="emptyRow"><td colspan="8" class="muted">まだ実行していません。</td></tr>
         </tbody>
       </table>
     </div>
-
-    <details>
-      <summary>直近のサーバー試行ログ</summary>
-      <pre id="attemptLog">まだ実行されていません。</pre>
-    </details>
-
-    <details>
-      <summary>直近のnodeクエリ</summary>
-      <pre id="nodeQuery">まだ実行されていません。</pre>
-    </details>
-
-    <details>
-      <summary>直近のnwrクエリ</summary>
-      <pre id="nwrQuery">まだ実行されていません。</pre>
-    </details>
   </section>
 
-  <footer>店舗データ © OpenStreetMap contributors / Overpass API。営業時間・口コミ・評価は取得しません。</footer>
+  <footer>店舗データ © OpenStreetMap contributors / Overpass API。判定基準：成功率90〜95%以上かつ多くが3秒以内 → Overpass続行 / 失敗頻発または5〜20秒が普通 → Geoapifyへ移行。</footer>
 </main>
 
 <script>
 "use strict";
 
-const STATIONS = {
-  "東京": { lat: 35.681236, lon: 139.767125 },
-  "新宿": { lat: 35.690921, lon: 139.700258 },
-  "渋谷": { lat: 35.658034, lon: 139.701636 },
-  "池袋": { lat: 35.729503, lon: 139.710900 },
-  "上野": { lat: 35.713768, lon: 139.777254 },
-  "品川": { lat: 35.628471, lon: 139.738760 }
-};
-
-const SERVERS = [
-  { name:"overpass-api.de", url:"https://overpass-api.de/api/interpreter" },
-  { name:"private.coffee", url:"https://overpass.private.coffee/api/interpreter" }
+const STATIONS = [
+  { name: "東京", lat: 35.681236, lon: 139.767125 },
+  { name: "新宿", lat: 35.690921, lon: 139.700258 },
+  { name: "渋谷", lat: 35.658034, lon: 139.701636 }
 ];
 
-const GENRES = {
-  cafe: { label:"☕ カフェ", filter:`["amenity"="cafe"]` },
-  drink:{ label:"🍺 居酒屋・飲み", filter:`["amenity"~"^(pub|bar)$"]` },
-  food: { label:"🍜 ごはん", filter:`["amenity"~"^(restaurant|fast_food)$"]` }
-};
+const SERVERS = [
+  { name: "overpass-api.de", url: "https://overpass-api.de/api/interpreter" },
+  { name: "private.coffee", url: "https://overpass.private.coffee/api/interpreter" }
+];
+
+const GENRES = [
+  { key: "cafe", label: "☕ カフェ", filter: `["amenity"="cafe"]` },
+  { key: "drink", label: "🍺 居酒屋・飲み", filter: `["amenity"~"^(pub|bar)$"]` },
+  { key: "food", label: "🍜 ごはん", filter: `["amenity"~"^(restaurant|fast_food)$"]` }
+];
+
+const REPEATS = 3;
+const RADIUS_M = 500;
+const REQUEST_TIMEOUT_MS = 12000; // 単発の許容上限（診断用に少し余裕を持たせる）
+const GAP_BETWEEN_REQUESTS_MS = 1200; // 逐次実行の間隔（サーバーへの配慮）
 
 const $ = id => document.getElementById(id);
 const els = {
-  stationName:$("stationName"), genre:$("genre"), lat:$("lat"), lon:$("lon"),
-  radius:$("radius"), locateBtn:$("locateBtn"), compareBtn:$("compareBtn"),
-  clearBtn:$("clearBtn"), status:$("status"), latestCard:$("latestCard"),
-  nodeMetric:$("nodeMetric"), nodeDetail:$("nodeDetail"), nwrMetric:$("nwrMetric"),
-  nwrDetail:$("nwrDetail"), conclusion:$("conclusion"), resultBody:$("resultBody"),
-  attemptLog:$("attemptLog"), nodeQuery:$("nodeQuery"), nwrQuery:$("nwrQuery")
+  runBtn: $("runBtn"),
+  stopBtn: $("stopBtn"),
+  status: $("status"),
+  progressBar: $("progressBar"),
+  resultBody: $("resultBody"),
+  statTotal: $("statTotal"),
+  statSuccessRate: $("statSuccessRate"),
+  statAvg: $("statAvg"),
+  statMedian: $("statMedian"),
+  statMax: $("statMax"),
+  statUnder3: $("statUnder3"),
+  verdict: $("verdict")
 };
 
+let aborted = false;
 let rowNo = 0;
 
-function setBusy(v) {
-  els.locateBtn.disabled = v;
-  els.compareBtn.disabled = v;
-  document.querySelectorAll("[data-station]").forEach(b => b.disabled = v);
-}
-function setStatus(text,type="") {
-  els.status.textContent = text;
-  els.status.className = "status " + type;
-}
-function valid(lat,lon) {
-  return Number.isFinite(lat) && Number.isFinite(lon) &&
-    lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function bboxFromRadius(lat, lon, radiusM) {
+  const dLat = radiusM / 111320;
+  const dLon = radiusM / (111320 * Math.cos(lat * Math.PI / 180));
+  const south = lat - dLat, north = lat + dLat;
+  const west = lon - dLon, east = lon + dLon;
+  return `${south.toFixed(6)},${west.toFixed(6)},${north.toFixed(6)},${east.toFixed(6)}`;
 }
 
-// 円を囲むbboxを作る。緯度1度≒111.32km、経度は緯度で補正。
-function bboxFromRadius(lat, lon, radiusMeters) {
-  const latDelta = radiusMeters / 111320;
-  const lonDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
-  return {
-    south: lat - latDelta,
-    west: lon - lonDelta,
-    north: lat + latDelta,
-    east: lon + lonDelta
-  };
-}
-
-function buildQuery(mode, lat, lon, radius, genre) {
-  const b = bboxFromRadius(lat, lon, radius);
-  const box = `${b.south.toFixed(6)},${b.west.toFixed(6)},${b.north.toFixed(6)},${b.east.toFixed(6)}`;
-  if (mode === "node") {
-    return `[out:json][timeout:20];
-node${GENRES[genre].filter}(${box});
-out body qt;`;
-  }
-  return `[out:json][timeout:20];
-nwr${GENRES[genre].filter}(${box});
-out center tags qt;`;
-}
-
-async function fetchOverpass(query, label) {
-  const attempts = [];
-  for (const server of SERVERS) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 22000);
-    const start = performance.now();
-
-    try {
-      setStatus(`${label}取得中… ${server.name}`);
-      const response = await fetch(server.url, {
-        method:"POST",
-        headers:{ "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
-        body:"data=" + encodeURIComponent(query),
-        signal:controller.signal
-      });
-      const sec = (performance.now()-start)/1000;
-
-      if (!response.ok) {
-        attempts.push(`${label} / ${server.name}: HTTP ${response.status} (${sec.toFixed(2)}秒)`);
-        continue;
-      }
-
-      const data = await response.json();
-      attempts.push(`${label} / ${server.name}: 成功 (${sec.toFixed(2)}秒)`);
-      return { ok:true, data, sec, server:server.name, attempts };
-    } catch(e) {
-      const sec = (performance.now()-start)/1000;
-      const msg = e.name === "AbortError" ? "22秒タイムアウト" : (e.message || String(e));
-      attempts.push(`${label} / ${server.name}: ${msg} (${sec.toFixed(2)}秒)`);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  return { ok:false, data:null, sec:null, server:null, attempts };
+function buildQuery(lat, lon, radiusM, genreFilter) {
+  const bbox = bboxFromRadius(lat, lon, radiusM);
+  return `[out:json][timeout:10];
+node${genreFilter}(${bbox});
+out tags qt;`;
 }
 
 function uniqueCount(elements) {
@@ -294,174 +155,160 @@ function uniqueCount(elements) {
   return seen.size;
 }
 
-function fmtResult(r, count) {
-  if (!r.ok) return "取得失敗";
-  return `${count}件 / ${r.sec.toFixed(2)}秒 / ${r.server}`;
+async function runOnce(query) {
+  // overpass-api.de に1回。だめなら private.coffee に1回だけフォールバック。即時リトライなし。
+  for (const server of SERVERS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const start = performance.now();
+    try {
+      const response = await fetch(server.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: "data=" + encodeURIComponent(query),
+        signal: controller.signal
+      });
+      const sec = (performance.now() - start) / 1000;
+      if (!response.ok) continue;
+      const data = await response.json();
+      return { ok: true, sec, count: uniqueCount(data.elements), server: server.name };
+    } catch (e) {
+      const sec = (performance.now() - start) / 1000;
+      if (server === SERVERS[SERVERS.length - 1]) {
+        return { ok: false, sec, server: server.name };
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return { ok: false, sec: null, server: null };
 }
 
-function judge(nodeR,nodeCount,nwrR,nwrCount) {
-  if (!nodeR.ok && !nwrR.ok) {
-    return { label:"両方失敗", cls:"bad",
-      text:"bbox化・20秒化でも両方失敗。Overpass本番採用はかなり厳しいです。" };
-  }
-  if (nodeR.ok && !nwrR.ok) {
-    return { label:"node有力", cls:"good",
-      text:"nodeは成功、nwrは失敗。node限定でMVPを成立させる価値があります。" };
-  }
-  if (!nodeR.ok && nwrR.ok) {
-    return { label:"nwr有力", cls:"warn",
-      text:"nwrだけ成功。nwr自体が主因という仮説は弱くなります。" };
-  }
-
-  const miss = nwrCount > 0 ? Math.max(0, (nwrCount-nodeCount)/nwrCount) : 0;
-  const nodeFast = nodeR.sec <= nwrR.sec * 0.7;
-  const enough = nodeCount >= 5;
-
-  if (enough && miss <= 0.20 && nodeFast) {
-    return { label:"node採用候補", cls:"good",
-      text:`nodeは十分速く、nwr比の取りこぼしは約${Math.round(miss*100)}%。MVPならnode限定が有力です。` };
-  }
-  if (enough && miss <= 0.35) {
-    return { label:"要検討", cls:"warn",
-      text:`nodeでも候補数は十分ですが、nwr比の取りこぼしは約${Math.round(miss*100)}%。速度とのトレードオフ確認が必要です。` };
-  }
-  return { label:"node不向き", cls:"bad",
-    text:`node限定では取りこぼしが大きい、または速度優位が小さいです。Geoapify等への移行を検討した方がよさそうです。` };
-}
-
-function appendRow(station,genre,radius,nodeR,nodeCount,nwrR,nwrCount,j) {
-  const empty=document.getElementById("emptyRow");
+function appendRow(no, station, genreLabel, attempt, result) {
+  const empty = document.getElementById("emptyRow");
   if (empty) empty.remove();
-  rowNo++;
-
-  const diff = (nodeR.ok && nwrR.ok) ? (nwrCount-nodeCount) : null;
-  const vals = [
-    rowNo,
+  const tr = document.createElement("tr");
+  const cells = [
+    no,
     station,
-    GENRES[genre].label,
-    radius===500 ? "500m" : "1km",
-    nodeR.ok ? nodeCount : "-",
-    nodeR.ok ? `${nodeR.sec.toFixed(2)}秒` : "失敗",
-    nwrR.ok ? nwrCount : "-",
-    nwrR.ok ? `${nwrR.sec.toFixed(2)}秒` : "失敗",
-    diff == null ? "-" : diff,
-    j.label
+    genreLabel,
+    `${attempt}/${REPEATS}`,
+    result.ok ? "成功" : "失敗",
+    result.sec != null ? `${result.sec.toFixed(2)}秒` : "-",
+    result.ok ? result.count : "-",
+    result.server ?? "-"
   ];
-
-  const tr=document.createElement("tr");
-  vals.forEach((v,i)=>{
-    const td=document.createElement("td");
-    if (i===9) {
-      const span=document.createElement("span");
-      span.className=`badge ${j.cls}`;
-      span.textContent=v;
+  cells.forEach((v, i) => {
+    const td = document.createElement("td");
+    if (i === 4) {
+      const span = document.createElement("span");
+      span.className = `badge ${result.ok ? "ok-badge" : "bad-badge"}`;
+      span.textContent = v;
       td.appendChild(span);
     } else {
-      td.textContent=v;
+      td.textContent = v;
     }
     tr.appendChild(td);
   });
   els.resultBody.appendChild(tr);
+  tr.scrollIntoView({ block: "nearest" });
 }
 
-document.querySelectorAll("[data-station]").forEach(btn=>{
-  btn.addEventListener("click",()=>{
-    const name=btn.dataset.station;
-    const s=STATIONS[name];
-    els.stationName.value=name;
-    els.lat.value=s.lat.toFixed(6);
-    els.lon.value=s.lon.toFixed(6);
-    els.radius.value="500";
-    setStatus(`${name}駅をセットしました。`);
-  });
-});
+function median(arr) {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
 
-els.locateBtn.addEventListener("click",()=>{
-  if (!navigator.geolocation) {
-    setStatus("このブラウザでは位置情報を利用できません。","error");
+function renderStats(records) {
+  const total = records.length;
+  const successes = records.filter(r => r.ok);
+  const times = successes.map(r => r.sec);
+  const successRate = total ? (successes.length / total * 100) : 0;
+  const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
+  const med = median(times);
+  const max = times.length ? Math.max(...times) : null;
+  const under3 = times.length ? (times.filter(t => t <= 3).length / times.length * 100) : 0;
+
+  els.statTotal.textContent = total;
+  els.statSuccessRate.textContent = total ? `${successRate.toFixed(0)}%` : "-";
+  els.statAvg.textContent = avg != null ? `${avg.toFixed(2)}秒` : "-";
+  els.statMedian.textContent = med != null ? `${med.toFixed(2)}秒` : "-";
+  els.statMax.textContent = max != null ? `${max.toFixed(2)}秒` : "-";
+  els.statUnder3.textContent = times.length ? `${under3.toFixed(0)}%` : "-";
+
+  return { total, successRate, avg, med, max, under3 };
+}
+
+function renderVerdict(stats, done) {
+  if (!done) {
+    els.verdict.className = "verdict pending";
+    els.verdict.textContent = "実行中… 27回完了後に判定します。";
     return;
   }
-  setBusy(true);
-  setStatus("現在地を取得中…");
-  navigator.geolocation.getCurrentPosition(
-    p=>{
-      els.stationName.value="現在地";
-      els.lat.value=p.coords.latitude.toFixed(6);
-      els.lon.value=p.coords.longitude.toFixed(6);
-      els.radius.value="500";
-      setStatus("現在地を取得しました。保存はしません。","ok");
-      setBusy(false);
-    },
-    ()=>{
-      setStatus("現在地を取得できませんでした。","error");
-      setBusy(false);
-    },
-    {enableHighAccuracy:false,timeout:10000,maximumAge:60000}
-  );
-});
-
-els.compareBtn.addEventListener("click",async()=>{
-  const station=els.stationName.value.trim() || "地点未入力";
-  const genre=els.genre.value;
-  const lat=Number(els.lat.value);
-  const lon=Number(els.lon.value);
-  const radius=Number(els.radius.value);
-
-  if (!valid(lat,lon)) {
-    setStatus("緯度・経度を確認してください。","error");
-    return;
+  const goodSuccess = stats.successRate >= 90;
+  const goodSpeed = stats.under3 >= 60; // 目安：成功のうち6割以上が3秒以内
+  if (goodSuccess && goodSpeed) {
+    els.verdict.className = "verdict go";
+    els.verdict.textContent = `判定: Overpass続行でよさそう（成功率${stats.successRate.toFixed(0)}% / 3秒以内${stats.under3.toFixed(0)}%）`;
+  } else {
+    els.verdict.className = "verdict stop";
+    els.verdict.textContent = `判定: Geoapifyへの移行を検討（成功率${stats.successRate.toFixed(0)}% / 3秒以内${stats.under3.toFixed(0)}%）`;
   }
+}
 
-  const nodeQ=buildQuery("node",lat,lon,radius,genre);
-  const nwrQ=buildQuery("nwr",lat,lon,radius,genre);
-  els.nodeQuery.textContent=nodeQ;
-  els.nwrQuery.textContent=nwrQ;
-
-  setBusy(true);
-  els.latestCard.hidden=false;
-
-  try {
-    const nodeR=await fetchOverpass(nodeQ,"node");
-    const nodeCount=nodeR.ok ? uniqueCount(nodeR.data.elements) : 0;
-
-    const nwrR=await fetchOverpass(nwrQ,"nwr");
-    const nwrCount=nwrR.ok ? uniqueCount(nwrR.data.elements) : 0;
-
-    els.attemptLog.textContent=[...(nodeR.attempts||[]),...(nwrR.attempts||[])].join("\n");
-
-    els.nodeMetric.textContent=nodeR.ok ? `${nodeCount}件 / ${nodeR.sec.toFixed(2)}秒` : "取得失敗";
-    els.nodeDetail.textContent=nodeR.ok ? nodeR.server : "両サーバーで失敗";
-    els.nwrMetric.textContent=nwrR.ok ? `${nwrCount}件 / ${nwrR.sec.toFixed(2)}秒` : "取得失敗";
-    els.nwrDetail.textContent=nwrR.ok ? nwrR.server : "両サーバーで失敗";
-
-    const j=judge(nodeR,nodeCount,nwrR,nwrCount);
-    els.conclusion.textContent=j.text;
-    els.conclusion.className=j.cls;
-
-    appendRow(station,genre,radius,nodeR,nodeCount,nwrR,nwrCount,j);
-    setStatus(`${station} / ${GENRES[genre].label} の比較が完了しました。`,"ok");
-  } finally {
-    setBusy(false);
-  }
-});
-
-els.clearBtn.addEventListener("click",()=>{
-  rowNo=0;
+async function runAll() {
+  aborted = false;
+  rowNo = 0;
   els.resultBody.replaceChildren();
-  const tr=document.createElement("tr");
-  tr.id="emptyRow";
-  const td=document.createElement("td");
-  td.colSpan=10;
-  td.className="muted";
-  td.textContent="まだ結果はありません。";
+  const tr = document.createElement("tr");
+  tr.id = "emptyRow";
+  const td = document.createElement("td");
+  td.colSpan = 8;
+  td.className = "muted";
+  td.textContent = "実行準備中…";
   tr.appendChild(td);
   els.resultBody.appendChild(tr);
-  els.latestCard.hidden=true;
-  els.attemptLog.textContent="まだ実行されていません。";
-  els.nodeQuery.textContent="まだ実行されていません。";
-  els.nwrQuery.textContent="まだ実行されていません。";
-  setStatus("結果表をクリアしました。");
-});
+
+  els.runBtn.disabled = true;
+  els.stopBtn.disabled = false;
+  els.progressBar.value = 0;
+  renderVerdict(null, false);
+
+  const records = [];
+  let done = 0;
+  const totalRuns = STATIONS.length * GENRES.length * REPEATS;
+
+  outer:
+  for (const station of STATIONS) {
+    for (const genre of GENRES) {
+      for (let attempt = 1; attempt <= REPEATS; attempt++) {
+        if (aborted) break outer;
+        rowNo++;
+        els.status.textContent = `実行中… ${station.name} / ${genre.label} (${attempt}/${REPEATS})`;
+        const query = buildQuery(station.lat, station.lon, RADIUS_M, genre.filter);
+        const result = await runOnce(query);
+        records.push(result);
+        appendRow(rowNo, station.name, genre.label, attempt, result);
+        done++;
+        els.progressBar.value = done;
+        renderStats(records);
+        if (done < totalRuns) await sleep(GAP_BETWEEN_REQUESTS_MS);
+      }
+    }
+  }
+
+  const stats = renderStats(records);
+  renderVerdict(stats, !aborted);
+  els.status.textContent = aborted ? "中止しました。" : "27回のテストが完了しました。";
+  els.status.className = "status " + (aborted ? "error" : "ok");
+  els.runBtn.disabled = false;
+  els.stopBtn.disabled = true;
+}
+
+els.runBtn.addEventListener("click", runAll);
+els.stopBtn.addEventListener("click", () => { aborted = true; });
 </script>
 </body>
 </html>
