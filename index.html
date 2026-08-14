@@ -155,6 +155,17 @@
     font-size: .88rem;
     cursor: pointer;
   }
+  .exclude-btn {
+    display: inline-block;
+    margin: 8px 6px 0;
+    border: 0;
+    background: none;
+    color: #a4442a;
+    font-size: .82rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: underline;
+  }
   .others-title {
     margin: 26px 0 10px;
     font-size: .95rem;
@@ -186,6 +197,16 @@
     color: #1c1c1c;
     text-decoration: underline;
     white-space: nowrap;
+  }
+  .other-exclude {
+    display: block;
+    margin: 4px 0 0 auto;
+    border: 0;
+    background: none;
+    color: #a4442a;
+    font-size: .78rem;
+    cursor: pointer;
+    padding: 2px 4px;
   }
 
   .disclaimer {
@@ -256,6 +277,7 @@
       <a class="map-link" id="heroMapLink" href="#" target="_blank" rel="noopener">Googleマップで営業状況を確認して行く</a>
       <div class="stale-note">店舗情報が古い場合があります</div>
       <button class="shuffle-btn" id="shuffleBtn">↻ 別の候補</button>
+      <button class="exclude-btn" id="excludeHeroBtn">✕ これは違う</button>
     </div>
 
     <div class="others-title">ほかの候補</div>
@@ -323,6 +345,10 @@ document.getElementById("retryBtn").addEventListener("click", startFlow);
 document.getElementById("backFromError").addEventListener("click", () => showScreen("genre"));
 document.getElementById("againBtn").addEventListener("click", () => showScreen("genre"));
 document.getElementById("shuffleBtn").addEventListener("click", pickAnother);
+document.getElementById("excludeHeroBtn").addEventListener("click", () => {
+  const current = document.getElementById("heroName").textContent;
+  excludeCandidate(current);
+});
 
 // ==== メインフロー ====
 async function startFlow() {
@@ -382,6 +408,29 @@ function weightedPick(ranked, excludeNames) {
     if (r <= 0) return candidates[i];
   }
   return candidates[candidates.length - 1];
+}
+
+// ==== 「これは違う」: このセッション内でのみ、指定した店を候補から完全に除外する ====
+// 画面を閉じる/リロードすれば忘れる(保存はしない)。再取得もしない。
+function excludeCandidate(name) {
+  sessionState.candidates = sessionState.candidates.filter(item => item.name !== name);
+  sessionState.shownNames.delete(name);
+
+  if (!sessionState.candidates.length) {
+    showError("候補がなくなりました。ジャンルを変えて探し直してください。");
+    return;
+  }
+
+  const currentHero = document.getElementById("heroName").textContent;
+  if (currentHero === name) {
+    // 今表示中の店が除外された場合は、残りから自動で選び直す
+    const picked = weightedPick(sessionState.candidates, sessionState.shownNames);
+    renderResult(picked, sessionState.candidates);
+  } else {
+    // 「ほかの候補」から除外された場合は、今の「今ならここ」を維持したまま一覧だけ更新する
+    const heroItem = sessionState.candidates.find(item => item.name === currentHero);
+    renderResult(heroItem, sessionState.candidates);
+  }
 }
 
 // ==== 「別の候補」ボタン: API再取得せず、取得済みの中から選び直す ====
@@ -548,9 +597,14 @@ function renderResult(top, allCandidates) {
       <div style="text-align:right;">
         <div class="other-status ${levelToClass(item.crowdLevel)}">${levelToText(item.crowdLevel)}</div><br>
         <a class="other-link" href="${mapUrl(item)}" target="_blank" rel="noopener">地図</a>
+        <button class="other-exclude" data-name="${escapeHtml(item.name)}">✕</button>
       </div>
     `;
     list.appendChild(card);
+  });
+
+  list.querySelectorAll(".other-exclude").forEach(btn => {
+    btn.addEventListener("click", () => excludeCandidate(btn.dataset.name));
   });
 }
 
