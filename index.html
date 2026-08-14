@@ -3,64 +3,107 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Prototype 004 - Overpass軽量テスト v2</title>
+  <title>Prototype 004 - Overpass駅別カバレッジテスト v3</title>
   <style>
     :root { font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5; }
     * { box-sizing:border-box; }
     body { margin:0; background:#f6f7f8; color:#181818; }
-    main { width:min(760px,calc(100% - 28px)); margin:auto; padding:24px 0 48px; }
+    main { width:min(980px,calc(100% - 28px)); margin:auto; padding:24px 0 48px; }
     h1 { font-size:clamp(1.35rem,5vw,1.9rem); margin:0 0 6px; }
     h2 { font-size:1.05rem; margin:0 0 12px; }
     p { margin:6px 0; }
     .muted { color:#666; font-size:.9rem; }
     .card { background:#fff; border:1px solid #ddd; border-radius:16px; padding:16px; margin-top:14px; }
-    .warning { border-left:4px solid #b26a00; padding:10px 12px; background:#fff7e8; border-radius:8px; margin-top:12px; }
-    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    @media (max-width:560px){ .grid{grid-template-columns:1fr;} }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    @media (max-width:650px){ .grid{grid-template-columns:1fr;} }
     label { display:block; font-size:.86rem; font-weight:700; margin-bottom:4px; }
     input,select,button { width:100%; min-height:46px; border-radius:11px; font:inherit; }
     input,select { border:1px solid #bbb; background:#fff; color:#181818; padding:9px 11px; }
     button { border:0; background:#181818; color:#fff; padding:10px 14px; font-weight:800; cursor:pointer; }
     button.secondary { background:#fff; color:#181818; border:1px solid #aaa; }
+    button.danger { background:#fff; color:#a00000; border:1px solid #caa; }
     button:disabled { opacity:.55; cursor:wait; }
-    .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
-    @media (max-width:560px){ .actions{grid-template-columns:1fr;} }
+    .actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:12px; }
+    @media (max-width:650px){ .actions{grid-template-columns:1fr;} }
     .status { margin-top:12px; min-height:24px; font-weight:700; }
     .error { color:#a00000; }
-    .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
-    @media (max-width:660px){ .metrics{grid-template-columns:1fr 1fr;} }
-    .metric { border:1px solid #ddd; border-radius:12px; padding:11px; }
-    .metric small { display:block; color:#666; }
-    .metric strong { font-size:1.25rem; }
-    .meta { margin-top:12px; display:grid; gap:4px; font-size:.9rem; }
-    ul { padding-left:1.2rem; margin:8px 0 0; }
-    li { margin:4px 0; }
+    .ok { color:#0a6a2a; }
+
+    .station-buttons {
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:8px;
+      margin-top:10px;
+    }
+    @media (max-width:650px){ .station-buttons{grid-template-columns:repeat(2,minmax(0,1fr));} }
+    .station-buttons button {
+      background:#fff;
+      color:#181818;
+      border:1px solid #bbb;
+      font-weight:700;
+    }
+
+    .table-wrap { overflow-x:auto; margin-top:10px; }
+    table { width:100%; border-collapse:collapse; min-width:780px; }
+    th,td { padding:10px 9px; border-bottom:1px solid #e2e2e2; text-align:left; vertical-align:top; }
+    th { background:#f7f7f7; font-size:.84rem; position:sticky; top:0; }
+    td { font-size:.9rem; }
+    .badge {
+      display:inline-block;
+      border:1px solid currentColor;
+      border-radius:999px;
+      padding:2px 8px;
+      font-weight:800;
+      white-space:nowrap;
+    }
+    .judge-good { color:#087830; }
+    .judge-mid { color:#8a6500; }
+    .judge-bad { color:#a00000; }
     details { margin-top:14px; }
     pre { overflow:auto; white-space:pre-wrap; word-break:break-word; background:#f4f4f4; padding:10px; border-radius:10px; font-size:.8rem; }
-    .badge { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:2px 8px; font-weight:800; }
     footer { margin-top:22px; color:#666; font-size:.8rem; }
   </style>
 </head>
 <body>
 <main>
-  <h1>Overpass軽量テスト v2</h1>
-  <p class="muted">Prototype 004の本番に近い「1ジャンル検索」を中心に確認します。保存処理はありません。</p>
+  <h1>Overpass駅別カバレッジテスト v3</h1>
+  <p class="muted">Prototype 004「サクいこ」用。主要駅ごとに1ジャンルずつ取得し、結果を表に残します。履歴は保存しません。</p>
 
-  <div id="fileWarning" class="warning" hidden>
-    <strong>ローカルファイルを直接開いています。</strong><br>
-    <span class="muted">file:// ではCORSや位置情報の挙動がGitHub Pagesと異なる場合があります。最終判定はHTTP(S)環境で行ってください。</span>
-  </div>
+  <section class="card">
+    <h2>主要駅プリセット</h2>
+    <div class="station-buttons">
+      <button type="button" data-station="東京">東京</button>
+      <button type="button" data-station="新宿">新宿</button>
+      <button type="button" data-station="渋谷">渋谷</button>
+      <button type="button" data-station="池袋">池袋</button>
+      <button type="button" data-station="上野">上野</button>
+      <button type="button" data-station="品川">品川</button>
+    </div>
+    <p class="muted">駅を押すと、下の緯度・経度に反映します。</p>
+  </section>
 
   <section class="card">
     <h2>検索条件</h2>
     <div class="grid">
       <div>
+        <label for="stationName">地点名</label>
+        <input id="stationName" value="新宿">
+      </div>
+      <div>
+        <label for="genre">ジャンル</label>
+        <select id="genre">
+          <option value="cafe">☕ カフェ</option>
+          <option value="drink">🍺 居酒屋・飲み</option>
+          <option value="food">🍜 ごはん</option>
+        </select>
+      </div>
+      <div>
         <label for="lat">緯度</label>
-        <input id="lat" type="number" step="any" value="35.8062">
+        <input id="lat" type="number" step="any" value="35.690921">
       </div>
       <div>
         <label for="lon">経度</label>
-        <input id="lon" type="number" step="any" value="139.7217">
+        <input id="lon" type="number" step="any" value="139.700258">
       </div>
       <div>
         <label for="radius">半径</label>
@@ -70,49 +113,53 @@
         </select>
       </div>
       <div>
-        <label for="genre">ジャンル</label>
-        <select id="genre">
-          <option value="cafe">☕ カフェ</option>
-          <option value="drink">🍺 居酒屋・飲み</option>
-          <option value="food">🍜 ごはん</option>
-          <option value="all">🧪 全ジャンル（検証用）</option>
-        </select>
+        <label>判定基準</label>
+        <input value="◎=1kmで3件以上 / ○=2kmで3件以上 / △=0〜2件" readonly>
       </div>
     </div>
 
     <div class="actions">
-      <button id="locateBtn" class="secondary">📍 現在地を取得</button>
-      <button id="searchBtn">店舗を取得</button>
+      <button id="locateBtn" class="secondary" type="button">📍 現在地を取得</button>
+      <button id="searchBtn" type="button">店舗を取得して表に追加</button>
+      <button id="clearBtn" class="danger" type="button">結果表をクリア</button>
     </div>
     <div id="status" class="status" role="status" aria-live="polite"></div>
   </section>
 
-  <section id="result" class="card" hidden>
-    <h2>結果</h2>
-    <div class="metrics">
-      <div class="metric"><small>☕ カフェ</small><strong id="cafeCount">0</strong></div>
-      <div class="metric"><small>🍺 居酒屋</small><strong id="drinkCount">0</strong></div>
-      <div class="metric"><small>🍜 ごはん</small><strong id="foodCount">0</strong></div>
-      <div class="metric"><small>合計</small><strong id="totalCount">0</strong></div>
+  <section class="card">
+    <h2>検証結果</h2>
+    <p class="muted">同じ駅でも「カフェ → 居酒屋 → ごはん」と1件ずつ試してください。リロードすると表は消えます。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>地点</th>
+            <th>ジャンル</th>
+            <th>半径</th>
+            <th>件数</th>
+            <th>判定</th>
+            <th>応答時間</th>
+            <th>サーバー</th>
+            <th>結果</th>
+          </tr>
+        </thead>
+        <tbody id="resultBody">
+          <tr id="emptyRow">
+            <td colspan="9" class="muted">まだ結果はありません。</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-
-    <div class="meta">
-      <div>判定: <span id="judge" class="badge">-</span></div>
-      <div>使用サーバー: <strong id="server">-</strong></div>
-      <div>応答時間: <strong id="elapsed">-</strong></div>
-      <div>OSMデータ時刻: <strong id="osmTime">-</strong></div>
-    </div>
-
-    <div id="storeList"></div>
 
     <details>
-      <summary>サーバー試行ログ</summary>
-      <pre id="attemptLog"></pre>
+      <summary>直近のサーバー試行ログ</summary>
+      <pre id="attemptLog">まだ実行されていません。</pre>
     </details>
 
     <details>
-      <summary>実行クエリ</summary>
-      <pre id="queryView"></pre>
+      <summary>直近の実行クエリ</summary>
+      <pre id="queryView">まだ実行されていません。</pre>
     </details>
   </section>
 
@@ -122,62 +169,90 @@
 <script>
 "use strict";
 
+const STATIONS = {
+  "東京": { lat: 35.681236, lon: 139.767125 },
+  "新宿": { lat: 35.690921, lon: 139.700258 },
+  "渋谷": { lat: 35.658034, lon: 139.701636 },
+  "池袋": { lat: 35.729503, lon: 139.710900 },
+  "上野": { lat: 35.713768, lon: 139.777254 },
+  "品川": { lat: 35.628471, lon: 139.738760 }
+};
+
 const SERVERS = [
-  { name: "公式 overpass-api.de", url: "https://overpass-api.de/api/interpreter" },
-  { name: "Private.coffee", url: "https://overpass.private.coffee/api/interpreter" }
+  { name: "overpass-api.de", url: "https://overpass-api.de/api/interpreter" },
+  { name: "private.coffee", url: "https://overpass.private.coffee/api/interpreter" }
 ];
+
+const GENRES = {
+  cafe: { label: "☕ カフェ", filter: `["amenity"="cafe"]` },
+  drink: { label: "🍺 居酒屋・飲み", filter: `["amenity"~"^(pub|bar)$"]` },
+  food: { label: "🍜 ごはん", filter: `["amenity"~"^(restaurant|fast_food)$"]` }
+};
 
 const $ = id => document.getElementById(id);
 const els = {
-  lat:$("lat"), lon:$("lon"), radius:$("radius"), genre:$("genre"),
-  locateBtn:$("locateBtn"), searchBtn:$("searchBtn"), status:$("status"),
-  result:$("result"), cafeCount:$("cafeCount"), drinkCount:$("drinkCount"),
-  foodCount:$("foodCount"), totalCount:$("totalCount"), judge:$("judge"),
-  server:$("server"), elapsed:$("elapsed"), osmTime:$("osmTime"),
-  storeList:$("storeList"), attemptLog:$("attemptLog"), queryView:$("queryView"),
-  fileWarning:$("fileWarning")
+  stationName: $("stationName"),
+  genre: $("genre"),
+  lat: $("lat"),
+  lon: $("lon"),
+  radius: $("radius"),
+  locateBtn: $("locateBtn"),
+  searchBtn: $("searchBtn"),
+  clearBtn: $("clearBtn"),
+  status: $("status"),
+  resultBody: $("resultBody"),
+  emptyRow: $("emptyRow"),
+  attemptLog: $("attemptLog"),
+  queryView: $("queryView")
 };
 
-if (location.protocol === "file:") els.fileWarning.hidden = false;
+let rowNo = 0;
 
-function busy(v) {
+function setBusy(v) {
   els.locateBtn.disabled = v;
   els.searchBtn.disabled = v;
+  document.querySelectorAll("[data-station]").forEach(b => b.disabled = v);
 }
-function status(text, error=false) {
+function setStatus(text, type="") {
   els.status.textContent = text;
-  els.status.classList.toggle("error", error);
+  els.status.className = "status " + type;
 }
 function valid(lat, lon) {
   return Number.isFinite(lat) && Number.isFinite(lon) &&
          lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
 }
-
-function filterFor(genre) {
-  if (genre === "cafe")  return `["amenity"="cafe"]`;
-  if (genre === "drink") return `["amenity"~"^(pub|bar)$"]`;
-  if (genre === "food")  return `["amenity"~"^(restaurant|fast_food)$"]`;
-  return `["amenity"~"^(cafe|pub|bar|restaurant|fast_food)$"]`;
-}
-
 function buildQuery(lat, lon, radius, genre) {
-  // 1ジャンルなら1本だけ。本番想定の軽い問い合わせ。
   return `[out:json][timeout:10];
-nwr${filterFor(genre)}(around:${radius},${lat},${lon});
+nwr${GENRES[genre].filter}(around:${radius},${lat},${lon});
 out center tags qt;`;
+}
+function judge(count, radius) {
+  if (radius === 1000 && count >= 3) return "◎";
+  if (radius === 2000 && count >= 3) return "○";
+  return "△";
+}
+function judgeClass(j) {
+  if (j === "◎") return "judge-good";
+  if (j === "○") return "judge-mid";
+  return "judge-bad";
+}
+function uniqueCount(elements) {
+  const seen = new Set();
+  for (const el of elements || []) seen.add(`${el.type}/${el.id}`);
+  return seen.size;
 }
 
 async function fetchWithFallback(query) {
   const attempts = [];
 
-  for (const s of SERVERS) {
+  for (const server of SERVERS) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);
     const start = performance.now();
 
     try {
-      status(`取得中… ${s.name}`);
-      const response = await fetch(s.url, {
+      setStatus(`取得中… ${server.name}`);
+      const response = await fetch(server.url, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
         body: "data=" + encodeURIComponent(query),
@@ -185,143 +260,157 @@ async function fetchWithFallback(query) {
       });
 
       const sec = (performance.now() - start) / 1000;
+
       if (!response.ok) {
-        attempts.push(`${s.name}: HTTP ${response.status} (${sec.toFixed(2)}秒)`);
+        attempts.push(`${server.name}: HTTP ${response.status} (${sec.toFixed(2)}秒)`);
         continue;
       }
 
       const data = await response.json();
-      attempts.push(`${s.name}: 成功 (${sec.toFixed(2)}秒)`);
-      return { data, server:s.name, sec, attempts };
+      attempts.push(`${server.name}: 成功 (${sec.toFixed(2)}秒)`);
+      return { ok:true, data, server:server.name, sec, attempts };
     } catch (e) {
       const sec = (performance.now() - start) / 1000;
-      const msg = e.name === "AbortError" ? "ブラウザ側12秒タイムアウト" : (e.message || String(e));
-      attempts.push(`${s.name}: ${msg} (${sec.toFixed(2)}秒)`);
+      const msg = e.name === "AbortError" ? "12秒タイムアウト" : (e.message || String(e));
+      attempts.push(`${server.name}: ${msg} (${sec.toFixed(2)}秒)`);
     } finally {
       clearTimeout(timer);
     }
   }
 
-  const err = new Error("すべてのOverpassサーバーで取得に失敗しました。");
-  err.attempts = attempts;
-  throw err;
+  return { ok:false, attempts };
 }
 
-function category(el) {
-  const a = el.tags?.amenity;
-  if (a === "cafe") return "cafe";
-  if (a === "pub" || a === "bar") return "drink";
-  if (a === "restaurant" || a === "fast_food") return "food";
-  return null;
-}
-function nameOf(el) {
-  const t = el.tags || {};
-  return t["name:ja"] || t.name || t.brand || "名称未登録";
-}
-function coordsOf(el) {
-  if (Number.isFinite(el.lat) && Number.isFinite(el.lon)) return {lat:el.lat, lon:el.lon};
-  if (el.center && Number.isFinite(el.center.lat) && Number.isFinite(el.center.lon)) return el.center;
-  return null;
-}
-function distance(lat1,lon1,lat2,lon2) {
-  const R=6371000, rad=d=>d*Math.PI/180;
-  const p1=rad(lat1), p2=rad(lat2), dp=rad(lat2-lat1), dl=rad(lon2-lon1);
-  const a=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
-  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-function coverage(total, radius) {
-  if (radius === 1000 && total >= 3) return "◎";
-  if (radius === 2000 && total >= 3) return "○";
-  return "△";
-}
-function render(data, server, sec, attempts, query, lat, lon, radius) {
-  const unique = [];
-  const seen = new Set();
-  for (const el of (data.elements || [])) {
-    const key = `${el.type}/${el.id}`;
-    if (!seen.has(key)) { seen.add(key); unique.push(el); }
-  }
+function appendRow({ station, genre, radius, count, j, sec, server, result }) {
+  const empty = document.getElementById("emptyRow");
+  if (empty) empty.remove();
 
-  const groups = { cafe:[], drink:[], food:[] };
-  for (const el of unique) {
-    const c = category(el);
-    if (c) groups[c].push(el);
-  }
-  const total = groups.cafe.length + groups.drink.length + groups.food.length;
+  rowNo += 1;
+  const tr = document.createElement("tr");
 
-  els.cafeCount.textContent = groups.cafe.length;
-  els.drinkCount.textContent = groups.drink.length;
-  els.foodCount.textContent = groups.food.length;
-  els.totalCount.textContent = total;
-  els.judge.textContent = coverage(total, radius);
-  els.server.textContent = server;
-  els.elapsed.textContent = `${sec.toFixed(2)}秒`;
-  els.osmTime.textContent = data.osm3s?.timestamp_osm_base || "不明";
-  els.attemptLog.textContent = attempts.join("\n");
-  els.queryView.textContent = query;
+  const values = [
+    rowNo,
+    station,
+    GENRES[genre].label,
+    radius === 1000 ? "1km" : "2km",
+    count ?? "-",
+    j ?? "-",
+    sec != null ? `${sec.toFixed(2)}秒` : "-",
+    server ?? "-",
+    result
+  ];
 
-  const list = document.createElement("ul");
-  unique.map(el => {
-    const c = coordsOf(el);
-    return {el, d:c ? Math.round(distance(lat,lon,c.lat,c.lon)) : null};
-  }).sort((a,b)=>(a.d ?? Infinity)-(b.d ?? Infinity))
-    .slice(0,50)
-    .forEach(({el,d}) => {
-      const li=document.createElement("li");
-      const kind = category(el)==="cafe" ? "☕" : category(el)==="drink" ? "🍺" : "🍜";
-      li.textContent = `${kind} ${nameOf(el)}${d===null ? "" : `（約${d}m）`}`;
-      list.appendChild(li);
-    });
+  values.forEach((value, i) => {
+    const td = document.createElement("td");
+    if (i === 5 && j) {
+      const span = document.createElement("span");
+      span.className = `badge ${judgeClass(j)}`;
+      span.textContent = j;
+      td.appendChild(span);
+    } else {
+      td.textContent = value;
+    }
+    tr.appendChild(td);
+  });
 
-  els.storeList.replaceChildren(list);
-  els.result.hidden = false;
+  els.resultBody.appendChild(tr);
 }
+
+document.querySelectorAll("[data-station]").forEach(button => {
+  button.addEventListener("click", () => {
+    const name = button.dataset.station;
+    const s = STATIONS[name];
+    els.stationName.value = name;
+    els.lat.value = s.lat.toFixed(6);
+    els.lon.value = s.lon.toFixed(6);
+    setStatus(`${name}駅をセットしました。`);
+  });
+});
 
 els.locateBtn.addEventListener("click", () => {
-  if (!navigator.geolocation) return status("このブラウザでは位置情報を利用できません。", true);
-  busy(true); status("現在地を取得中…");
+  if (!navigator.geolocation) {
+    setStatus("このブラウザでは位置情報を利用できません。", "error");
+    return;
+  }
+
+  setBusy(true);
+  setStatus("現在地を取得中…");
+
   navigator.geolocation.getCurrentPosition(
     p => {
-      els.lat.value=p.coords.latitude.toFixed(6);
-      els.lon.value=p.coords.longitude.toFixed(6);
-      status("現在地を取得しました。保存はしません。");
-      busy(false);
+      els.stationName.value = "現在地";
+      els.lat.value = p.coords.latitude.toFixed(6);
+      els.lon.value = p.coords.longitude.toFixed(6);
+      setStatus("現在地を取得しました。保存はしません。", "ok");
+      setBusy(false);
     },
-    e => {
-      status(e.code===1 ? "位置情報の利用が許可されていません。" : "現在地を取得できませんでした。", true);
-      busy(false);
+    () => {
+      setStatus("現在地を取得できませんでした。", "error");
+      setBusy(false);
     },
     { enableHighAccuracy:false, timeout:10000, maximumAge:60000 }
   );
 });
 
 els.searchBtn.addEventListener("click", async () => {
-  const lat=Number(els.lat.value), lon=Number(els.lon.value);
-  const radius=Number(els.radius.value), genre=els.genre.value;
-  if (!valid(lat,lon)) return status("緯度・経度を確認してください。", true);
+  const station = els.stationName.value.trim() || "地点未入力";
+  const genre = els.genre.value;
+  const lat = Number(els.lat.value);
+  const lon = Number(els.lon.value);
+  const radius = Number(els.radius.value);
 
-  const query=buildQuery(lat,lon,radius,genre);
-  els.result.hidden=true;
-  busy(true);
+  if (!valid(lat, lon)) {
+    setStatus("緯度・経度を確認してください。", "error");
+    return;
+  }
+
+  const query = buildQuery(lat, lon, radius, genre);
+  els.queryView.textContent = query;
+  setBusy(true);
 
   try {
-    const r=await fetchWithFallback(query);
-    render(r.data,r.server,r.sec,r.attempts,query,lat,lon,radius);
-    status("取得できました。");
-  } catch(e) {
-    els.result.hidden=false;
-    els.cafeCount.textContent=els.drinkCount.textContent=els.foodCount.textContent=els.totalCount.textContent="-";
-    els.judge.textContent="-";
-    els.server.textContent="-";
-    els.elapsed.textContent="-";
-    els.osmTime.textContent="-";
-    els.storeList.replaceChildren();
-    els.queryView.textContent=query;
-    els.attemptLog.textContent=(e.attempts || []).join("\n");
-    status(`${e.message} 下の「サーバー試行ログ」を確認してください。`, true);
+    const r = await fetchWithFallback(query);
+    els.attemptLog.textContent = (r.attempts || []).join("\n");
+
+    if (!r.ok) {
+      appendRow({
+        station, genre, radius,
+        count:null, j:null, sec:null, server:null,
+        result:"取得失敗"
+      });
+      setStatus("すべてのOverpassサーバーで取得に失敗しました。", "error");
+      return;
+    }
+
+    const count = uniqueCount(r.data.elements);
+    const j = judge(count, radius);
+
+    appendRow({
+      station, genre, radius, count, j,
+      sec:r.sec, server:r.server,
+      result:"成功"
+    });
+
+    setStatus(`${station} / ${GENRES[genre].label}：${count}件取得しました。`, "ok");
   } finally {
-    busy(false);
+    setBusy(false);
   }
+});
+
+els.clearBtn.addEventListener("click", () => {
+  rowNo = 0;
+  els.resultBody.replaceChildren();
+  const tr = document.createElement("tr");
+  tr.id = "emptyRow";
+  const td = document.createElement("td");
+  td.colSpan = 9;
+  td.className = "muted";
+  td.textContent = "まだ結果はありません。";
+  tr.appendChild(td);
+  els.resultBody.appendChild(tr);
+  els.attemptLog.textContent = "まだ実行されていません。";
+  els.queryView.textContent = "まだ実行されていません。";
+  setStatus("結果表をクリアしました。");
 });
 </script>
 </body>
