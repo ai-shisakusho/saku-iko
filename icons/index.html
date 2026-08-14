@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>サクいこ - 空いてそうな店を3秒で決める</title>
+<link rel="icon" type="image/x-icon" href="icons/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<style>
+  :root {
+    font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height: 1.6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #faf8f5;
+    color: #1c1c1c;
+    min-height: 100vh;
+  }
+  main {
+    width: min(520px, calc(100% - 32px));
+    margin: auto;
+    padding: 32px 0 60px;
+  }
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  h1 {
+    font-size: clamp(1.4rem, 6vw, 1.8rem);
+    margin: 0 0 4px;
+    text-align: center;
+  }
+  .tagline {
+    text-align: center;
+    color: #777;
+    font-size: .95rem;
+    margin: 0 0 28px;
+  }
+
+  .genre-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .genre-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 22px 10px;
+    border-radius: 18px;
+    border: 1px solid #e2ddd4;
+    background: #fff;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    color: #1c1c1c;
+  }
+  .genre-btn:active { transform: scale(.98); }
+  .genre-btn .emoji { font-size: 2rem; }
+  .genre-btn.omakase { grid-column: span 2; flex-direction: row; padding: 16px; }
+
+  .privacy-note {
+    margin-top: 22px;
+    font-size: .82rem;
+    color: #888;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .loading {
+    text-align: center;
+    padding: 60px 0;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    margin: 0 auto 18px;
+    border: 4px solid #e6e0d6;
+    border-top-color: #d97b3f;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading p { color: #666; }
+
+  .error-box {
+    text-align: center;
+    padding: 40px 20px;
+    background: #fff;
+    border-radius: 16px;
+    border: 1px solid #f0d9d0;
+  }
+  .error-box p { color: #a4442a; margin: 0 0 18px; }
+  .retry-btn, .back-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .retry-btn { background: #1c1c1c; color: #fff; }
+  .back-btn { background: #fff; border: 1px solid #ccc; color: #1c1c1c; margin-top: 10px; }
+
+  .hero-card {
+    background: #fff;
+    border-radius: 22px;
+    padding: 22px;
+    border: 1px solid #e2ddd4;
+    text-align: center;
+  }
+  .hero-label {
+    font-size: .85rem;
+    font-weight: 800;
+    color: #d97b3f;
+    margin-bottom: 6px;
+  }
+  .hero-name { font-size: 1.35rem; font-weight: 800; margin: 4px 0 10px; }
+  .status-badge {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: .95rem;
+    margin-bottom: 8px;
+  }
+  .status-green { background: #e5f4e6; color: #1c7c33; }
+  .status-yellow { background: #fbf1d8; color: #9a7300; }
+  .status-red { background: #fbe6e2; color: #b43a22; }
+  .status-reason { color: #666; font-size: .88rem; margin: 4px 0 14px; }
+  .hero-meta { color: #555; font-size: .9rem; margin-bottom: 16px; }
+  .stale-note {
+    font-size: .75rem;
+    color: #999;
+    margin-top: 10px;
+  }
+  .map-link {
+    display: inline-block;
+    text-decoration: none;
+    background: #1c1c1c;
+    color: #fff;
+    padding: 12px 22px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: .95rem;
+  }
+
+  .shuffle-btn {
+    display: block;
+    margin: 14px auto 0;
+    border: 1px solid #ccc;
+    background: #fff;
+    color: #1c1c1c;
+    border-radius: 12px;
+    padding: 9px 18px;
+    font-weight: 700;
+    font-size: .88rem;
+    cursor: pointer;
+  }
+  .exclude-btn {
+    display: inline-block;
+    margin: 8px 6px 0;
+    border: 0;
+    background: none;
+    color: #a4442a;
+    font-size: .82rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .others-title {
+    margin: 26px 0 10px;
+    font-size: .95rem;
+    font-weight: 800;
+    color: #555;
+  }
+  .other-card {
+    background: #fff;
+    border: 1px solid #e6e2da;
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .other-name { font-weight: 700; margin-bottom: 4px; }
+  .other-meta { font-size: .82rem; color: #777; }
+  .other-status {
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .other-link {
+    font-size: .8rem;
+    color: #1c1c1c;
+    text-decoration: underline;
+    white-space: nowrap;
+  }
+  .other-exclude {
+    display: block;
+    margin: 4px 0 0 auto;
+    border: 0;
+    background: none;
+    color: #a4442a;
+    font-size: .78rem;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+
+  .disclaimer {
+    margin-top: 20px;
+    font-size: .78rem;
+    color: #999;
+    text-align: center;
+    line-height: 1.6;
+  }
+  .again-btn {
+    display: block;
+    width: 100%;
+    margin-top: 22px;
+    border: 1px solid #ccc;
+    background: #fff;
+    border-radius: 14px;
+    padding: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    color: #1c1c1c;
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- 画面1: ジャンル選択 -->
+  <section id="screenGenre" class="screen active">
+    <h1>サクいこ</h1>
+    <p class="tagline">空いてそうな店を3秒で決める</p>
+    <div class="genre-grid">
+      <button class="genre-btn" data-genre="cafe"><span class="emoji">☕</span>カフェ</button>
+      <button class="genre-btn" data-genre="drink"><span class="emoji">🍺</span>居酒屋</button>
+      <button class="genre-btn" data-genre="food"><span class="emoji">🍜</span>ごはん</button>
+      <button class="genre-btn" data-genre="all"><span class="emoji">🎲</span>おまかせ</button>
+    </div>
+    <p class="privacy-note">
+      近くのお店を探すために現在地を使用します。<br>
+      現在地は店舗検索のため外部サービスへ送信されますが、このアプリでは保存しません。
+    </p>
+  </section>
+
+  <!-- 画面: ローディング -->
+  <section id="screenLoading" class="screen">
+    <div class="loading">
+      <div class="spinner"></div>
+      <p id="loadingText">近くのお店を探しています…</p>
+    </div>
+  </section>
+
+  <!-- 画面: エラー -->
+  <section id="screenError" class="screen">
+    <div class="error-box">
+      <p id="errorText">エラーが発生しました。</p>
+      <button class="retry-btn" id="retryBtn">もう一度試す</button><br>
+      <button class="back-btn" id="backFromError">ジャンル選択に戻る</button>
+    </div>
+  </section>
+
+  <!-- 画面2: 結果 -->
+  <section id="screenResult" class="screen">
+    <div class="hero-card">
+      <div class="hero-label">🎯 今ならここ</div>
+      <div class="hero-name" id="heroName">-</div>
+      <div id="heroStatus" class="status-badge status-green">空いてそう</div>
+      <div class="status-reason" id="heroReason">-</div>
+      <div class="hero-meta" id="heroMeta">-</div>
+      <a class="map-link" id="heroMapLink" href="#" target="_blank" rel="noopener">Googleマップで営業状況を確認して行く</a>
+      <div class="stale-note">店舗情報が古い場合があります</div>
+      <button class="shuffle-btn" id="shuffleBtn">↻ 別の候補</button>
+      <button class="exclude-btn" id="excludeHeroBtn">✕ これは違う</button>
+    </div>
+
+    <div class="others-title">ほかの候補</div>
+    <div id="othersList"></div>
+
+    <p class="disclaimer">
+      曜日・時間帯・店舗情報から混雑状況を予測しています。実際の状況とは異なる場合があります。<br>
+      営業時間・口コミ・評価はGoogleマップでご確認ください。
+    </p>
+    <button class="again-btn" id="againBtn">別のジャンルを探す</button>
+  </section>
+
+</main>
+
+<script>
+"use strict";
+
+// ==== 設定 ====
+const WORKER_BASE = "https://sakuiko-proxy.ai-shisakusho.workers.dev/places";
+const RADIUS_STEPS = [1000, 2000]; // 初期1km、足りなければ2km
+const MIN_CANDIDATES = 3; // これ未満なら次の半径を試す
+const TOP_N = 5; // 空いてそう度×距離で絞る上位件数
+const OTHERS_COUNT = 4; // 「ほかの候補」に表示する件数
+
+// 上位候補からの重み付きランダム選出比率(1位から順に)
+const PICK_WEIGHTS = [0.35, 0.25, 0.20, 0.12, 0.08];
+
+// おまかせで実際に検索するジャンル(barは対象外)
+const REAL_GENRES = ["cafe", "drink", "food"];
+
+const GENRE_LABELS = {
+  cafe: "☕ カフェ",
+  drink: "🍺 居酒屋",
+  food: "🍜 ごはん",
+  all: "🎲 おまかせ"
+};
+
+// 直近の検索状態(「別の候補」で再利用する)
+let sessionState = {
+  candidates: [],   // ランク済み上位TOP_N件
+  shownNames: new Set() // このセッションで一度出した店名
+};
+
+// ==== 画面切り替え ====
+const screens = {
+  genre: document.getElementById("screenGenre"),
+  loading: document.getElementById("screenLoading"),
+  error: document.getElementById("screenError"),
+  result: document.getElementById("screenResult")
+};
+function showScreen(name) {
+  Object.values(screens).forEach(s => s.classList.remove("active"));
+  screens[name].classList.add("active");
+}
+
+let currentGenre = null;
+
+document.querySelectorAll(".genre-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    currentGenre = btn.dataset.genre;
+    startFlow();
+  });
+});
+document.getElementById("retryBtn").addEventListener("click", startFlow);
+document.getElementById("backFromError").addEventListener("click", () => showScreen("genre"));
+document.getElementById("againBtn").addEventListener("click", () => showScreen("genre"));
+document.getElementById("shuffleBtn").addEventListener("click", pickAnother);
+document.getElementById("excludeHeroBtn").addEventListener("click", () => {
+  const current = document.getElementById("heroName").textContent;
+  excludeCandidate(current);
+});
+
+// ==== メインフロー ====
+async function startFlow() {
+  showScreen("loading");
+  document.getElementById("loadingText").textContent = "現在地を確認しています…";
+
+  let coords;
+  try {
+    coords = await getLocation();
+  } catch (e) {
+    showError("現在地を取得できませんでした。位置情報の利用を許可してください。");
+    return;
+  }
+
+  document.getElementById("loadingText").textContent = "近くのお店を探しています…";
+
+  // おまかせの場合はここでジャンルを1つランダムに確定させる(bar等は対象外)
+  const searchGenre = currentGenre === "all"
+    ? REAL_GENRES[Math.floor(Math.random() * REAL_GENRES.length)]
+    : currentGenre;
+
+  let features = [];
+  try {
+    for (const radius of RADIUS_STEPS) {
+      features = await fetchPlaces(searchGenre, coords.lat, coords.lon, radius);
+      if (features.length >= MIN_CANDIDATES) break;
+    }
+  } catch (e) {
+    showError("お店の情報を取得できませんでした。もう一度お試しください。");
+    return;
+  }
+
+  if (!features.length) {
+    showError("この近くでは候補を見つけられませんでした。");
+    return;
+  }
+
+  const ranked = rankPlaces(features, coords, searchGenre);
+  sessionState.candidates = ranked;
+  sessionState.shownNames = new Set();
+
+  const picked = weightedPick(ranked, sessionState.shownNames);
+  renderResult(picked, ranked);
+  showScreen("result");
+}
+
+// ==== 重み付きランダム選出 ====
+function weightedPick(ranked, excludeNames) {
+  const pool = ranked.filter(item => !excludeNames.has(item.name));
+  const candidates = pool.length ? pool : ranked; // 全部出し切ったら一巡させる
+
+  const weights = candidates.map((_, i) => PICK_WEIGHTS[i] ?? PICK_WEIGHTS[PICK_WEIGHTS.length - 1]);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < candidates.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return candidates[i];
+  }
+  return candidates[candidates.length - 1];
+}
+
+// ==== 「これは違う」: このセッション内でのみ、指定した店を候補から完全に除外する ====
+// 画面を閉じる/リロードすれば忘れる(保存はしない)。再取得もしない。
+function excludeCandidate(name) {
+  sessionState.candidates = sessionState.candidates.filter(item => item.name !== name);
+  sessionState.shownNames.delete(name);
+
+  if (!sessionState.candidates.length) {
+    showError("候補がなくなりました。ジャンルを変えて探し直してください。");
+    return;
+  }
+
+  const currentHero = document.getElementById("heroName").textContent;
+  if (currentHero === name) {
+    // 今表示中の店が除外された場合は、残りから自動で選び直す
+    const picked = weightedPick(sessionState.candidates, sessionState.shownNames);
+    renderResult(picked, sessionState.candidates);
+  } else {
+    // 「ほかの候補」から除外された場合は、今の「今ならここ」を維持したまま一覧だけ更新する
+    const heroItem = sessionState.candidates.find(item => item.name === currentHero);
+    renderResult(heroItem, sessionState.candidates);
+  }
+}
+
+// ==== 「別の候補」ボタン: API再取得せず、取得済みの中から選び直す ====
+function pickAnother() {
+  if (!sessionState.candidates.length) return;
+  const current = document.getElementById("heroName").textContent;
+  sessionState.shownNames.add(current);
+
+  const picked = weightedPick(sessionState.candidates, sessionState.shownNames);
+  renderResult(picked, sessionState.candidates);
+}
+
+function showError(message) {
+  document.getElementById("errorText").textContent = message;
+  showScreen("error");
+}
+
+// ==== 現在地取得(4桁に丸める) ====
+function getLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error("no geolocation")); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        resolve({
+          lat: Number(pos.coords.latitude.toFixed(4)),
+          lon: Number(pos.coords.longitude.toFixed(4))
+        });
+      },
+      () => reject(new Error("denied")),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
+  });
+}
+
+// ==== Worker経由で店舗取得 ====
+async function fetchPlaces(genre, lat, lon, radius) {
+  const url = `${WORKER_BASE}?genre=${genre}&lat=${lat}&lon=${lon}&radius=${radius}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("fetch failed: " + res.status);
+  const data = await res.json();
+  return data.features || [];
+}
+
+// ==== 距離計算(haversine, メートル) ====
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ==== 空いてそう度の予測(曜日・時間帯・ジャンル) ====
+// レベル: 3=空いてそう(緑) 2=普通そう(黄) 1=混んでそう(赤)
+function predictCrowd(genre, actualGenreTag) {
+  const now = new Date();
+  const day = now.getDay(); // 0=日 ... 6=土
+  const hour = now.getHours();
+  const isWeekend = (day === 0 || day === 6);
+  const isFriSat = (day === 5 || day === 6);
+
+  // ジャンル横断(おまかせ)の場合は実際のカテゴリタグから個別判定する
+  const g = genre === "all" ? guessGenreFromTag(actualGenreTag) : genre;
+
+  if (g === "cafe") {
+    if (hour >= 9 && hour < 11) return isWeekend
+      ? { level: 2, reason: "土日9〜11時はやや混みやすい時間帯です" }
+      : { level: 3, reason: "平日9〜11時は比較的入りやすい時間帯です" };
+    if (hour >= 12 && hour < 13) return { level: 1, reason: "12時台はランチ需要で混みやすい時間帯です" };
+    if (hour >= 14 && hour < 16) return isWeekend
+      ? { level: 1, reason: "土日14〜16時は混みやすい時間帯です" }
+      : { level: 2, reason: "平日14〜16時はやや混みやすい時間帯です" };
+    if (hour >= 17) return isWeekend
+      ? { level: 2, reason: "17時以降はやや落ち着いてくる時間帯です" }
+      : { level: 3, reason: "平日17時以降は比較的入りやすい時間帯です" };
+    return { level: 2, reason: "この時間帯はやや読みにくいですが普通そうです" };
+  }
+
+  if (g === "drink") {
+    if (hour >= 17 && hour < 18) return { level: isFriSat ? 2 : 3, reason: isFriSat ? "金土17時台はやや混み始める時間帯です" : "17時台は比較的入りやすい時間帯です" };
+    if (hour >= 18 && hour < 19) return { level: isFriSat ? 1 : 2, reason: isFriSat ? "金土18時台は混みやすい時間帯です" : "18時台はやや混み始める時間帯です" };
+    if (hour >= 19 && hour < 21) return { level: 1, reason: (isFriSat ? "金土" : "平日") + "19〜21時は混みやすい時間帯です" };
+    if (hour >= 21) return { level: 2, reason: "21時以降はやや落ち着いてくる時間帯です" };
+    return { level: 3, reason: "この時間帯は比較的入りやすそうです" };
+  }
+
+  // food(ごはん)
+  if (hour >= 11 && hour < 12) return { level: 2, reason: "11時台はランチ前でやや混み始める時間帯です" };
+  if (hour >= 12 && hour < 13) return { level: 1, reason: "12時台はランチのピークで混みやすい時間帯です" };
+  if (hour >= 14 && hour < 17) return { level: 3, reason: "14〜17時は比較的入りやすい時間帯です" };
+  if (hour >= 18 && hour < 19) return { level: 2, reason: "18時台は夕食に向けてやや混み始める時間帯です" };
+  if (hour >= 19 && hour < 20) return { level: 1, reason: "19〜20時は夕食のピークで混みやすい時間帯です" };
+  return { level: 2, reason: "この時間帯は普通そうです" };
+}
+
+function guessGenreFromTag(categories) {
+  const c = (categories || []).join(",");
+  if (c.includes("cafe")) return "cafe";
+  if (c.includes("bar") || c.includes("pub")) return "drink";
+  return "food";
+}
+
+// ==== スコアリングして並び替え ====
+function rankPlaces(features, userCoords, genre) {
+  const items = features.map(f => {
+    const p = f.properties || {};
+    const lat = p.lat, lon = p.lon;
+    const dist = distanceMeters(userCoords.lat, userCoords.lon, lat, lon);
+    const crowd = predictCrowd(genre, p.categories);
+    // スコア: 空いてそう度を優先しつつ、距離が近いほど加点
+    const distancePenalty = Math.min(dist / 500, 3); // 500mごとに1点減点、最大3点
+    const score = crowd.level * 2 - distancePenalty;
+    return {
+      name: p.name || "名称不明の店舗",
+      lat, lon, dist,
+      crowdLevel: crowd.level,
+      reason: crowd.reason,
+      score
+    };
+  }).filter(it => it.name && Number.isFinite(it.lat) && Number.isFinite(it.lon));
+
+  items.sort((a, b) => b.score - a.score);
+  return items.slice(0, TOP_N);
+}
+
+// ==== 結果描画 ====
+function levelToClass(level) {
+  return level === 3 ? "status-green" : level === 2 ? "status-yellow" : "status-red";
+}
+function levelToText(level) {
+  return level === 3 ? "🟢 空いてそう" : level === 2 ? "🟡 普通そう" : "🔴 混んでそう";
+}
+function walkMinutes(dist) {
+  return Math.max(1, Math.round(dist / 80)); // 分速80m目安
+}
+function mapUrl(item) {
+  const q = encodeURIComponent(item.name);
+  return `https://www.google.com/maps/search/?api=1&query=${q}&query_place_id=&center=${item.lat},${item.lon}`;
+}
+
+function renderResult(top, allCandidates) {
+  const others = allCandidates.filter(item => item.name !== top.name).slice(0, OTHERS_COUNT);
+
+  document.getElementById("heroName").textContent = top.name;
+  const statusEl = document.getElementById("heroStatus");
+  statusEl.className = "status-badge " + levelToClass(top.crowdLevel);
+  statusEl.textContent = levelToText(top.crowdLevel);
+  document.getElementById("heroReason").textContent = top.reason;
+  document.getElementById("heroMeta").textContent = `徒歩 約${walkMinutes(top.dist)}分`;
+  document.getElementById("heroMapLink").href = mapUrl(top);
+
+  const list = document.getElementById("othersList");
+  list.innerHTML = "";
+  others.forEach(item => {
+    const card = document.createElement("div");
+    card.className = "other-card";
+    card.innerHTML = `
+      <div>
+        <div class="other-name">${escapeHtml(item.name)}</div>
+        <div class="other-meta">徒歩 約${walkMinutes(item.dist)}分</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="other-status ${levelToClass(item.crowdLevel)}">${levelToText(item.crowdLevel)}</div><br>
+        <a class="other-link" href="${mapUrl(item)}" target="_blank" rel="noopener">地図</a>
+        <button class="other-exclude" data-name="${escapeHtml(item.name)}">✕</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+
+  list.querySelectorAll(".other-exclude").forEach(btn => {
+    btn.addEventListener("click", () => excludeCandidate(btn.dataset.name));
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[m]));
+}
+</script>
+</body>
+</html>
