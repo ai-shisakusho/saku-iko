@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>サクいこ - Worker動作テスト</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  button { padding: 10px 16px; font-size: 1rem; cursor: pointer; }
+  pre { background: #f4f4f4; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; }
+  .ok { color: #0a6a2a; }
+  .error { color: #a00000; }
+</style>
+</head>
+<body>
+  <h1>Worker動作テスト</h1>
+  <p>新宿駅付近(緯度35.6909, 経度139.7003)でカフェを検索します。</p>
+  <button id="testBtn">テスト実行</button>
+  <p id="status"></p>
+  <pre id="output">まだ実行していません。</pre>
+
+<script>
+const WORKER_URL = "https://sakuiko-proxy.ai-shisakusho.workers.dev/places?genre=cafe&lat=35.6909&lon=139.7003";
+
+document.getElementById("testBtn").addEventListener("click", async () => {
+  const status = document.getElementById("status");
+  const output = document.getElementById("output");
+  status.textContent = "実行中…";
+  status.className = "";
+  const start = performance.now();
+  try {
+    const res = await fetch(WORKER_URL);
+    const sec = ((performance.now() - start) / 1000).toFixed(2);
+    const data = await res.json();
+
+    if (!res.ok) {
+      status.textContent = `失敗 (HTTP ${res.status}, ${sec}秒)`;
+      status.className = "error";
+      output.textContent = JSON.stringify(data, null, 2);
+      return;
+    }
+
+    const count = data.features ? data.features.length : 0;
+    status.textContent = `成功 (${sec}秒、${count}件)`;
+    status.className = "ok";
+    output.textContent = JSON.stringify(data, null, 2).slice(0, 3000);
+  } catch (e) {
+    status.textContent = "通信エラー: " + e.message;
+    status.className = "error";
+  }
+});
+</script>
+</body>
+</html>
