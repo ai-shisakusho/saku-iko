@@ -1,54 +1,283 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>サクいこ - Worker動作テスト</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
-  button { padding: 10px 16px; font-size: 1rem; cursor: pointer; }
-  pre { background: #f4f4f4; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; }
-  .ok { color: #0a6a2a; }
-  .error { color: #a00000; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>サクいこ - Worker安定性テスト v7</title>
+  <style>
+    :root { font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f6f7f8; color:#181818; }
+    main { width:min(980px,calc(100% - 28px)); margin:auto; padding:24px 0 48px; }
+    h1 { font-size:clamp(1.35rem,5vw,1.9rem); margin:0 0 6px; }
+    h2 { font-size:1.05rem; margin:0 0 12px; }
+    p { margin:6px 0; }
+    .muted { color:#666; font-size:.9rem; }
+    .card { background:#fff; border:1px solid #ddd; border-radius:16px; padding:16px; margin-top:14px; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    @media (max-width:650px){ .grid{grid-template-columns:1fr 1fr;} }
+    .stat { text-align:center; }
+    .stat .num { font-size:1.6rem; font-weight:800; }
+    .stat .label { font-size:.8rem; color:#666; }
+    button { border:0; border-radius:11px; background:#181818; color:#fff; padding:12px 16px; font-weight:800; cursor:pointer; font-size:1rem; }
+    button:disabled { opacity:.55; cursor:wait; }
+    progress { width:100%; height:14px; border-radius:8px; margin-top:10px; }
+    .status { margin-top:12px; min-height:24px; font-weight:700; }
+    .error { color:#a00000; }
+    .ok { color:#0a6a2a; }
+    .table-wrap { overflow-x:auto; margin-top:10px; max-height:420px; overflow-y:auto; }
+    table { width:100%; border-collapse:collapse; min-width:760px; }
+    th,td { padding:8px 9px; border-bottom:1px solid #e2e2e2; text-align:left; vertical-align:top; }
+    th { background:#f7f7f7; font-size:.82rem; position:sticky; top:0; }
+    td { font-size:.86rem; }
+    .badge { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:2px 8px; font-weight:800; white-space:nowrap; }
+    .ok-badge { color:#087830; }
+    .bad-badge { color:#a00000; }
+    .verdict { margin-top:14px; padding:14px; border-radius:12px; font-weight:800; font-size:1.05rem; }
+    .verdict.go { background:#e7f6ec; color:#0a6a2a; }
+    .verdict.stop { background:#fbeaea; color:#a00000; }
+    .verdict.pending { background:#f2f2f2; color:#555; }
+    .compare-table td:first-child,.compare-table th:first-child { font-weight:700; }
+    footer { margin-top:22px; color:#666; font-size:.8rem; }
+  </style>
 </head>
 <body>
-  <h1>Worker動作テスト</h1>
-  <p>新宿駅付近(緯度35.6909, 経度139.7003)でカフェを検索します。</p>
-  <button id="testBtn">テスト実行</button>
-  <p id="status"></p>
-  <pre id="output">まだ実行していません。</pre>
+<main>
+  <h1>Worker(Geoapify)安定性テスト v7</h1>
+  <p class="muted">「サクいこ」用。Cloudflare Worker経由でGeoapifyを叩き、Overpass(v6)と同条件で比較します。東京・新宿・渋谷 × カフェ/居酒屋/ごはん × 各3回 = 27回を逐次実行。保存はしません。</p>
+
+  <section class="card">
+    <h2>実行</h2>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="runBtn" type="button">27回のテストを開始</button>
+    </div>
+    <progress id="progressBar" max="27" value="0"></progress>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="card">
+    <h2>集計結果</h2>
+    <div class="grid">
+      <div class="stat"><div class="num" id="statTotal">-</div><div class="label">実行数</div></div>
+      <div class="stat"><div class="num" id="statSuccessRate">-</div><div class="label">成功率</div></div>
+      <div class="stat"><div class="num" id="statAvg">-</div><div class="label">平均時間</div></div>
+      <div class="stat"><div class="num" id="statMedian">-</div><div class="label">中央値</div></div>
+      <div class="stat"><div class="num" id="statMax">-</div><div class="label">最大時間</div></div>
+      <div class="stat"><div class="num" id="statUnder3">-</div><div class="label">3秒以内の割合</div></div>
+    </div>
+    <div id="verdict" class="verdict pending">27回完了後に判定を表示します。</div>
+  </section>
+
+  <section class="card">
+    <h2>Overpass(v6)との比較</h2>
+    <table class="compare-table">
+      <thead><tr><th>指標</th><th>Overpass(v6)</th><th>Worker(Geoapify)</th></tr></thead>
+      <tbody>
+        <tr><td>成功率</td><td>56%</td><td id="cmpSuccess">-</td></tr>
+        <tr><td>平均時間</td><td>4.79秒</td><td id="cmpAvg">-</td></tr>
+        <tr><td>中央値</td><td>4.85秒</td><td id="cmpMedian">-</td></tr>
+        <tr><td>最大時間</td><td>10.67秒</td><td id="cmpMax">-</td></tr>
+        <tr><td>3秒以内の割合</td><td>33%</td><td id="cmpUnder3">-</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>実行ログ</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>地点</th><th>ジャンル</th><th>試行</th><th>結果</th><th>時間</th><th>件数</th></tr></thead>
+        <tbody id="resultBody">
+          <tr id="emptyRow"><td colspan="7" class="muted">まだ実行していません。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>店舗データ © OpenStreetMap contributors / Geoapify。Cloudflare Worker(sakuiko-proxy)経由で取得。</footer>
+</main>
 
 <script>
-const WORKER_URL = "https://sakuiko-proxy.ai-shisakusho.workers.dev/places?genre=cafe&lat=35.6909&lon=139.7003";
+"use strict";
 
-document.getElementById("testBtn").addEventListener("click", async () => {
-  const status = document.getElementById("status");
-  const output = document.getElementById("output");
-  status.textContent = "実行中…";
-  status.className = "";
+// 実際のWorker URLに合わせて調整してください
+const WORKER_BASE = "https://sakuiko-proxy.ai-shisakusho.workers.dev/places";
+
+const STATIONS = [
+  { name: "東京", lat: 35.681236, lon: 139.767125 },
+  { name: "新宿", lat: 35.690921, lon: 139.700258 },
+  { name: "渋谷", lat: 35.658034, lon: 139.701636 }
+];
+
+const GENRES = [
+  { key: "cafe", label: "☕ カフェ" },
+  { key: "drink", label: "🍺 居酒屋・飲み" },
+  { key: "food", label: "🍜 ごはん" }
+];
+
+const REPEATS = 3;
+const GAP_BETWEEN_REQUESTS_MS = 500; // Workerは自前サーバーなのでOverpassほど間隔を空けなくてよい
+
+const $ = id => document.getElementById(id);
+const els = {
+  runBtn: $("runBtn"),
+  status: $("status"),
+  progressBar: $("progressBar"),
+  resultBody: $("resultBody"),
+  statTotal: $("statTotal"),
+  statSuccessRate: $("statSuccessRate"),
+  statAvg: $("statAvg"),
+  statMedian: $("statMedian"),
+  statMax: $("statMax"),
+  statUnder3: $("statUnder3"),
+  verdict: $("verdict"),
+  cmpSuccess: $("cmpSuccess"),
+  cmpAvg: $("cmpAvg"),
+  cmpMedian: $("cmpMedian"),
+  cmpMax: $("cmpMax"),
+  cmpUnder3: $("cmpUnder3")
+};
+
+let rowNo = 0;
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runOnce(genreKey, lat, lon) {
+  const url = `${WORKER_BASE}?genre=${genreKey}&lat=${lat}&lon=${lon}`;
   const start = performance.now();
   try {
-    const res = await fetch(WORKER_URL);
-    const sec = ((performance.now() - start) / 1000).toFixed(2);
+    const res = await fetch(url);
+    const sec = (performance.now() - start) / 1000;
+    if (!res.ok) return { ok: false, sec };
     const data = await res.json();
-
-    if (!res.ok) {
-      status.textContent = `失敗 (HTTP ${res.status}, ${sec}秒)`;
-      status.className = "error";
-      output.textContent = JSON.stringify(data, null, 2);
-      return;
-    }
-
     const count = data.features ? data.features.length : 0;
-    status.textContent = `成功 (${sec}秒、${count}件)`;
-    status.className = "ok";
-    output.textContent = JSON.stringify(data, null, 2).slice(0, 3000);
+    return { ok: true, sec, count };
   } catch (e) {
-    status.textContent = "通信エラー: " + e.message;
-    status.className = "error";
+    const sec = (performance.now() - start) / 1000;
+    return { ok: false, sec };
   }
-});
+}
+
+function appendRow(no, station, genreLabel, attempt, result) {
+  const empty = document.getElementById("emptyRow");
+  if (empty) empty.remove();
+  const tr = document.createElement("tr");
+  const cells = [
+    no, station, genreLabel, `${attempt}/${REPEATS}`,
+    result.ok ? "成功" : "失敗",
+    result.sec != null ? `${result.sec.toFixed(2)}秒` : "-",
+    result.ok ? result.count : "-"
+  ];
+  cells.forEach((v, i) => {
+    const td = document.createElement("td");
+    if (i === 4) {
+      const span = document.createElement("span");
+      span.className = `badge ${result.ok ? "ok-badge" : "bad-badge"}`;
+      span.textContent = v;
+      td.appendChild(span);
+    } else {
+      td.textContent = v;
+    }
+    tr.appendChild(td);
+  });
+  els.resultBody.appendChild(tr);
+  tr.scrollIntoView({ block: "nearest" });
+}
+
+function median(arr) {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+function renderStats(records) {
+  const total = records.length;
+  const successes = records.filter(r => r.ok);
+  const times = successes.map(r => r.sec);
+  const successRate = total ? (successes.length / total * 100) : 0;
+  const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
+  const med = median(times);
+  const max = times.length ? Math.max(...times) : null;
+  const under3 = times.length ? (times.filter(t => t <= 3).length / times.length * 100) : 0;
+
+  els.statTotal.textContent = total;
+  els.statSuccessRate.textContent = total ? `${successRate.toFixed(0)}%` : "-";
+  els.statAvg.textContent = avg != null ? `${avg.toFixed(2)}秒` : "-";
+  els.statMedian.textContent = med != null ? `${med.toFixed(2)}秒` : "-";
+  els.statMax.textContent = max != null ? `${max.toFixed(2)}秒` : "-";
+  els.statUnder3.textContent = times.length ? `${under3.toFixed(0)}%` : "-";
+
+  els.cmpSuccess.textContent = total ? `${successRate.toFixed(0)}%` : "-";
+  els.cmpAvg.textContent = avg != null ? `${avg.toFixed(2)}秒` : "-";
+  els.cmpMedian.textContent = med != null ? `${med.toFixed(2)}秒` : "-";
+  els.cmpMax.textContent = max != null ? `${max.toFixed(2)}秒` : "-";
+  els.cmpUnder3.textContent = times.length ? `${under3.toFixed(0)}%` : "-";
+
+  return { total, successRate, avg, med, max, under3 };
+}
+
+function renderVerdict(stats, done) {
+  if (!done) {
+    els.verdict.className = "verdict pending";
+    els.verdict.textContent = "実行中… 27回完了後に判定します。";
+    return;
+  }
+  const goodSuccess = stats.successRate >= 90;
+  const goodSpeed = stats.under3 >= 60;
+  if (goodSuccess && goodSpeed) {
+    els.verdict.className = "verdict go";
+    els.verdict.textContent = `判定: Worker(Geoapify)は採用基準を満たす（成功率${stats.successRate.toFixed(0)}% / 3秒以内${stats.under3.toFixed(0)}%）`;
+  } else {
+    els.verdict.className = "verdict stop";
+    els.verdict.textContent = `判定: 基準未達、さらなる調整が必要（成功率${stats.successRate.toFixed(0)}% / 3秒以内${stats.under3.toFixed(0)}%）`;
+  }
+}
+
+async function runAll() {
+  rowNo = 0;
+  els.resultBody.replaceChildren();
+  const tr = document.createElement("tr");
+  tr.id = "emptyRow";
+  const td = document.createElement("td");
+  td.colSpan = 7;
+  td.className = "muted";
+  td.textContent = "実行準備中…";
+  tr.appendChild(td);
+  els.resultBody.appendChild(tr);
+
+  els.runBtn.disabled = true;
+  els.progressBar.value = 0;
+  renderVerdict(null, false);
+
+  const records = [];
+  let done = 0;
+  const totalRuns = STATIONS.length * GENRES.length * REPEATS;
+
+  for (const station of STATIONS) {
+    for (const genre of GENRES) {
+      for (let attempt = 1; attempt <= REPEATS; attempt++) {
+        rowNo++;
+        els.status.textContent = `実行中… ${station.name} / ${genre.label} (${attempt}/${REPEATS})`;
+        const result = await runOnce(genre.key, station.lat, station.lon);
+        records.push(result);
+        appendRow(rowNo, station.name, genre.label, attempt, result);
+        done++;
+        els.progressBar.value = done;
+        renderStats(records);
+        if (done < totalRuns) await sleep(GAP_BETWEEN_REQUESTS_MS);
+      }
+    }
+  }
+
+  const stats = renderStats(records);
+  renderVerdict(stats, true);
+  els.status.textContent = "27回のテストが完了しました。";
+  els.status.className = "status ok";
+  els.runBtn.disabled = false;
+}
+
+els.runBtn.addEventListener("click", runAll);
 </script>
 </body>
 </html>
