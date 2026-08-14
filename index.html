@@ -306,8 +306,12 @@ const RADIUS_STEPS = [1000, 2000]; // 初期1km、足りなければ2km
 const MIN_CANDIDATES = 3; // これ未満なら次の半径を試す
 const OTHERS_COUNT = 4; // 「ほかの候補」に表示する件数
 
-// 上位候補からの重み付きランダム選出比率(1位から順に。6位以降は最後の値を使い回す)
-const PICK_WEIGHTS = [0.35, 0.25, 0.20, 0.12, 0.08];
+// 距離に応じた重み(順位という区切りは作らない。近いほど選ばれやすいが、遠くても0にはならない)
+// DECAYが大きいほど、遠い店も選ばれやすくなる
+const DISTANCE_DECAY_M = 400;
+function distanceWeight(dist) {
+  return 1 / (1 + dist / DISTANCE_DECAY_M);
+}
 
 // おまかせで実際に検索するジャンル(barは対象外)
 const REAL_GENRES = ["cafe", "drink", "food"];
@@ -409,12 +413,12 @@ async function startFlow() {
   showScreen("result");
 }
 
-// ==== 重み付きランダム選出 ====
+// ==== 重み付きランダム選出(距離ベース。順位という区切りは作らない) ====
 function weightedPick(ranked, excludeNames) {
   const pool = ranked.filter(item => !excludeNames.has(item.name));
   const candidates = pool.length ? pool : ranked; // 全部出し切ったら一巡させる
 
-  const weights = candidates.map((_, i) => PICK_WEIGHTS[i] ?? PICK_WEIGHTS[PICK_WEIGHTS.length - 1]);
+  const weights = candidates.map(item => distanceWeight(item.dist));
   const total = weights.reduce((a, b) => a + b, 0);
   let r = Math.random() * total;
   for (let i = 0; i < candidates.length; i++) {
@@ -445,10 +449,7 @@ async function topUpCandidatesIfLow() {
       !existingNames.has(item.name) && !sessionState.excludedNames.has(item.name)
     );
 
-    sessionState.candidates = [...sessionState.candidates, ...fresh].sort((a, b) => {
-      if (b.crowdLevel !== a.crowdLevel) return b.crowdLevel - a.crowdLevel;
-      return a.dist - b.dist;
-    });
+    sessionState.candidates = [...sessionState.candidates, ...fresh].sort((a, b) => a.dist - b.dist);
   } catch (e) {
     // 補充に失敗しても致命的ではないので、そのまま今ある候補で続行する
   }
@@ -582,11 +583,10 @@ function guessGenreFromTag(categories) {
   return "food";
 }
 
-// ==== 並び替え(合成スコアは使わない) ====
-// 空いてそう度は「曜日・時間帯からの粗い3段階予測」でしかないため、
-// 距離という正確な数値と1つの点数に合成すると、実際にはない精密さを装ってしまう。
-// そこで「まず空いてそう度で並べ、同じ段階の中では距離が近い順」という
-// 階層的な並び替えにする。
+// ==== 並び替え(距離のみ。空いてそう度は表示専用で順位には影響させない) ====
+// 空いてそう度は「曜日・時間帯からの粗い3段階予測」でしかなく、正確な値である
+// 距離と混ぜて優先順位を決めると、予測が外れた時の納得感を損ないやすい。
+// そのため並び順は距離のみで決め、空いてそう度はラベルとして表示するだけにする。
 function rankPlaces(features, userCoords, genre) {
   const items = features.map(f => {
     const p = f.properties || {};
@@ -596,15 +596,12 @@ function rankPlaces(features, userCoords, genre) {
     return {
       name: p.name || "名称不明の店舗",
       lat, lon, dist,
-      crowdLevel: crowd.level, // 3=空いてそう 2=普通そう 1=混んでそう
+      crowdLevel: crowd.level, // 3=空いてそう 2=普通そう 1=混んでそう(表示のみ、順位には使わない)
       reason: crowd.reason
     };
   }).filter(it => it.name && Number.isFinite(it.lat) && Number.isFinite(it.lon));
 
-  items.sort((a, b) => {
-    if (b.crowdLevel !== a.crowdLevel) return b.crowdLevel - a.crowdLevel; // 空いてそう度優先
-    return a.dist - b.dist; // 同じ段階内では近い順
-  });
+  items.sort((a, b) => a.dist - b.dist); // 距離のみで並べる
   return items; // ここでは絞らない。最大20件すべてを候補プールとして保持する
 }
 
