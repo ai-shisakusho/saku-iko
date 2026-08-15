@@ -282,7 +282,7 @@
       <div class="status-reason" id="heroReason">-</div>
       <div class="hero-meta" id="heroMeta">-</div>
       <a class="map-link" id="heroMapLink" href="#" target="_blank" rel="noopener">Googleマップで営業状況を確認して行く</a>
-      <div class="stale-note">店舗情報が古い場合があります</div>
+      <div class="stale-note">店舗情報が古い場合や、地図の場所が実際と異なる場合があります</div>
       <button class="shuffle-btn" id="shuffleBtn">↻ 別の候補</button>
       <button class="exclude-btn" id="excludeHeroBtn">✕ これは違う</button>
     </div>
@@ -624,8 +624,11 @@ function walkMinutes(dist) {
   return Math.max(1, Math.round(dist / 80)); // 分速80m目安
 }
 function mapUrl(item) {
-  const q = encodeURIComponent(item.name);
-  return `https://www.google.com/maps/search/?api=1&query=${q}&query_place_id=&center=${item.lat},${item.lon}`;
+  // 店名によるテキスト検索は、同名店・チェーン店があると別の場所に飛ぶことがある。
+  // Google公式ガイドでも「店名+緯度経度」を混ぜる形式は正しい場所に辿り着くとは限らないとされているため、
+  // 緯度経度のみを渡して、実際の位置に確実にピンが立つようにする。
+  // 店名は結果画面側で既に表示しているので、ここで失う情報はない。
+  return `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lon}`;
 }
 
 function renderResult(top, allCandidates) {
